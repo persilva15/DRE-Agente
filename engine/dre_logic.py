@@ -599,13 +599,15 @@ class DRELogic:
         r_2025 = self.calcular_realizado(empresa, mes, ano_ref)
         r_2026 = self.calcular_realizado(empresa, mes, 2026)
 
-        # 2. Calcular Orçado 2026
+        # 2. Calcular Orçado 2026 e Forecast 2026
         o_2026 = self.calcular_orcado(empresa, mes)
+        f_2026 = self.calcular_forecast(empresa, mes)
 
         # 3. Extrair Receita Bruta para AV
         rb_2025 = r_2025.get("Receita Bruta", {}).get("valor", 0)
         rb_2026 = r_2026.get("Receita Bruta", {}).get("valor", 0)
         rb_o26 = o_2026.get("Receita Bruta", {}).get("valor", 0)
+        rb_f26 = f_2026.get("Receita Bruta", {}).get("valor", 0)
 
         # 4. Montar tabela
         resultado = []
@@ -617,11 +619,13 @@ class DRELogic:
             v_r25 = r_2025.get(nivel_1, {}).get("valor", 0)
             v_r26 = r_2026.get(nivel_1, {}).get("valor", 0)
             v_o26 = o_2026.get(nivel_1, {}).get("valor", 0)
+            v_f26 = f_2026.get(nivel_1, {}).get("valor", 0)
 
             # Análise Vertical (valor / Receita Bruta * 100)
             av_2025 = (v_r25 / rb_2025 * 100) if rb_2025 != 0 else 0
             av_2026 = (v_r26 / rb_2026 * 100) if rb_2026 != 0 else 0
             av_o26 = (v_o26 / rb_o26 * 100) if rb_o26 != 0 else 0
+            av_f26 = (v_f26 / rb_f26 * 100) if rb_f26 != 0 else 0
 
             # Variações
             var_r26_r25_rs = v_r26 - v_r25
@@ -635,14 +639,20 @@ class DRELogic:
                 "subtotal": subtotal,
                 "r_2025": v_r25,
                 "av_2025": av_2025,
+                "f_2026": v_f26,
+                "av_f26": av_f26,
                 "r_2026": v_r26,
                 "av_2026": av_2026,
+                "var_f26_r25_pct": 0,
+                "var_f26_r25_rs": 0,
                 "var_r26_r25_pct": var_r26_r25_pct,
                 "var_r26_r25_rs": var_r26_r25_rs,
                 "o_2026": v_o26,
                 "av_o_2026": av_o26,
                 "var_o26_r26_pct": var_o26_r26_pct,
                 "var_o26_r26_rs": var_o26_r26_rs,
+                "var_f26_o26_pct": 0,
+                "var_f26_o26_rs": 0,
             })
 
         return resultado
