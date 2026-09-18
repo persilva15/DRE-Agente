@@ -11,7 +11,7 @@ from engine.dre_logic import DRELogic
 from engine.parser import QuestionParser
 from engine.responder import Responder
 from ui import inject_styles, render_exec_header, render_kpi_card, render_footer, format_real_brazilian, format_pct_brazilian
-from auth import login, logout, inicializar_admin_padrao
+from auth import login, logout
 
 # =============================================================================
 # DETECTAR AMBIENTE (local vs nuvem)
@@ -30,12 +30,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# =============================================================================
-# INICIALIZAR ADMIN PADRÃO
-# =============================================================================
-
-inicializar_admin_padrao()
 
 # =============================================================================
 # AUTENTICAÇÃO
