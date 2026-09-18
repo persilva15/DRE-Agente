@@ -43,9 +43,6 @@ if not IS_CLOUD:
         IS_CLOUD = True
         GITHUB_CSV_URL = "https://raw.githubusercontent.com/persilva15/DRE-Agente/main/csv_data"
 
-# Debug: mostrar ambiente detectado
-print(f"[DEBUG] IS_CLOUD={IS_CLOUD}, GITHUB_CSV_URL={GITHUB_CSV_URL[:50]}...")
-
 # =============================================================================
 # PAGE CONFIG
 # =============================================================================
