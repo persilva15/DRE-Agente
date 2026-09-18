@@ -11,7 +11,7 @@ from engine.dre_logic import DRELogic
 from engine.parser import QuestionParser
 from engine.responder import Responder
 from ui import inject_styles, render_exec_header, render_kpi_card, render_footer, format_real_brazilian, format_pct_brazilian
-from auth import login, logout
+from auth import login, logout, esta_logado, get_nome
 
 # =============================================================================
 # DETECTAR AMBIENTE (local vs nuvem)
@@ -35,14 +35,11 @@ st.set_page_config(
 # AUTENTICAÇÃO
 # =============================================================================
 
-name, authentication_status, username, authenticator = login()
-
-if authentication_status == False:
-    st.error('Usuário ou senha incorretos')
-    st.stop()
-elif authentication_status == None:
-    st.info('Insira suas credenciais para acessar')
-    st.stop()
+if not esta_logado():
+    login()
+    if not esta_logado():
+        st.info('Insira suas credenciais para acessar')
+        st.stop()
 
 # =============================================================================
 # INJETAR ESTILOS EXECUTIVE
@@ -81,8 +78,9 @@ with st.sidebar:
     st.markdown('<hr class="sidebar-divider">', unsafe_allow_html=True)
     
     # --- USUÁRIO LOGADO ---
-    st.markdown(f'<p style="color:#888;font-size:0.7rem;margin:0;">Logado como: <b>{name}</b></p>', unsafe_allow_html=True)
-    logout(authenticator)
+    st.markdown(f'<p style="color:#888;font-size:0.7rem;margin:0;">Logado como: <b>{get_nome()}</b></p>', unsafe_allow_html=True)
+    if st.button("Sair", key="btn_logout"):
+        logout()
     
     # --- SEÇÃO: FILTROS ---
     st.markdown('<p class="sidebar-section">Filtros</p>', unsafe_allow_html=True)
