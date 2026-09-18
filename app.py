@@ -20,19 +20,19 @@ from auth import login, logout, esta_logado, get_nome
 IS_CLOUD = False
 GITHUB_CSV_URL = ''
 
-# Método 1: tentar st.secrets
-try:
-    GITHUB_CSV_URL = st.secrets.get("GITHUB_CSV_URL", "")
-    if GITHUB_CSV_URL:
-        IS_CLOUD = True
-except Exception:
-    pass
-
-# Método 2: variável de ambiente
+# Método 1: variável de ambiente
 env_url = os.environ.get('GITHUB_CSV_URL', '')
 if env_url:
     GITHUB_CSV_URL = env_url
     IS_CLOUD = True
+
+# Método 2: tentar st.secrets
+if not IS_CLOUD:
+    try:
+        GITHUB_CSV_URL = st.secrets["GITHUB_CSV_URL"]
+        IS_CLOUD = True
+    except (KeyError, FileNotFoundError):
+        pass
 
 # Método 3: verificar se rede local existe (timeout rápido)
 if not IS_CLOUD:
@@ -40,10 +40,11 @@ if not IS_CLOUD:
     try:
         socket.create_connection(("10.5.12.252", 443), timeout=2)
     except (OSError, socket.timeout):
-        # Sem acesso à rede local → é cloud
         IS_CLOUD = True
-        if not GITHUB_CSV_URL:
-            GITHUB_CSV_URL = "https://raw.githubusercontent.com/persilva15/DRE-Agente/main/csv_data"
+        GITHUB_CSV_URL = "https://raw.githubusercontent.com/persilva15/DRE-Agente/main/csv_data"
+
+# Debug: mostrar ambiente detectado
+print(f"[DEBUG] IS_CLOUD={IS_CLOUD}, GITHUB_CSV_URL={GITHUB_CSV_URL[:50]}...")
 
 # =============================================================================
 # PAGE CONFIG
