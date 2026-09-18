@@ -17,8 +17,33 @@ from auth import login, logout, esta_logado, get_nome
 # DETECTAR AMBIENTE (local vs nuvem)
 # =============================================================================
 
-IS_CLOUD = os.environ.get('STREAMLIT_SERVER_RUN_ON_CLOUD', 'false').lower() == 'true'
-GITHUB_CSV_URL = os.environ.get('GITHUB_CSV_URL', '')
+IS_CLOUD = False
+GITHUB_CSV_URL = ''
+
+# Método 1: tentar st.secrets
+try:
+    GITHUB_CSV_URL = st.secrets.get("GITHUB_CSV_URL", "")
+    if GITHUB_CSV_URL:
+        IS_CLOUD = True
+except Exception:
+    pass
+
+# Método 2: variável de ambiente
+env_url = os.environ.get('GITHUB_CSV_URL', '')
+if env_url:
+    GITHUB_CSV_URL = env_url
+    IS_CLOUD = True
+
+# Método 3: verificar se rede local existe (timeout rápido)
+if not IS_CLOUD:
+    import socket
+    try:
+        socket.create_connection(("10.5.12.252", 443), timeout=2)
+    except (OSError, socket.timeout):
+        # Sem acesso à rede local → é cloud
+        IS_CLOUD = True
+        if not GITHUB_CSV_URL:
+            GITHUB_CSV_URL = "https://raw.githubusercontent.com/persilva15/DRE-Agente/main/csv_data"
 
 # =============================================================================
 # PAGE CONFIG
