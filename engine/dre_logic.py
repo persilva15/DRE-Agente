@@ -627,11 +627,26 @@ class DRELogic:
             av_o26 = (v_o26 / rb_o26 * 100) if rb_o26 != 0 else 0
             av_f26 = (v_f26 / rb_f26 * 100) if rb_f26 != 0 else 0
 
-            # Variações
-            var_r26_r25_rs = v_r26 - v_r25
-            var_r26_r25_pct = (var_r26_r25_rs / abs(v_r25)) if v_r25 != 0 else 0
-            var_o26_r26_rs = v_o26 - v_r26
-            var_o26_r26_pct = (var_o26_r26_rs / abs(v_r26)) if v_r26 != 0 else 0
+            # Inverter sinal para custos/despesas
+            inverter = ordem in {2, 2.5, 4, 6, 8, 10.5}
+
+            # F26 vs R25
+            var_f26_r25_rs = v_f26 - v_r25
+            var_f26_r25_pct = (var_f26_r25_rs / abs(v_r25)) if v_r25 != 0 else 0
+            if inverter:
+                var_f26_r25_pct = var_f26_r25_pct * -1
+
+            # F26 vs R26
+            var_f26_r26_rs = v_f26 - v_r26
+            var_f26_r26_pct = (var_f26_r26_rs / abs(v_r26)) if v_r26 != 0 else 0
+            if inverter:
+                var_f26_r26_pct = var_f26_r26_pct * -1
+
+            # F26 vs O26
+            var_f26_o26_rs = v_f26 - v_o26
+            var_f26_o26_pct = (var_f26_o26_rs / abs(v_o26)) if v_o26 != 0 else 0
+            if inverter:
+                var_f26_o26_pct = var_f26_o26_pct * -1
 
             resultado.append({
                 "nivel_1": nivel_1,
@@ -643,16 +658,14 @@ class DRELogic:
                 "av_f26": av_f26,
                 "r_2026": v_r26,
                 "av_2026": av_2026,
-                "var_f26_r25_pct": 0,
-                "var_f26_r25_rs": 0,
-                "var_r26_r25_pct": var_r26_r25_pct,
-                "var_r26_r25_rs": var_r26_r25_rs,
+                "var_f26_r25_pct": var_f26_r25_pct,
+                "var_f26_r25_rs": var_f26_r25_rs,
+                "var_f26_r26_pct": var_f26_r26_pct,
+                "var_f26_r26_rs": var_f26_r26_rs,
                 "o_2026": v_o26,
                 "av_o_2026": av_o26,
-                "var_o26_r26_pct": var_o26_r26_pct,
-                "var_o26_r26_rs": var_o26_r26_rs,
-                "var_f26_o26_pct": 0,
-                "var_f26_o26_rs": 0,
+                "var_f26_o26_pct": var_f26_o26_pct,
+                "var_f26_o26_rs": var_f26_o26_rs,
             })
 
         return resultado
