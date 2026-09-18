@@ -1,0 +1,13 @@
+credentials:
+  usernames:
+    admin:
+      email: admin@febracis.com.br
+      name: Administrador
+      password: $2b$12$V8orzxe6oT1oYAJgO6FLB.ir/G.7lv3uy./6X9a.3OOO60FrOrBeu
+cookie:
+  expiry_days: 30
+  key: dre_febracis_key
+  name: dre_febracis_cookie
+preauthorized:
+  emails:
+    - admin@febracis.com.br

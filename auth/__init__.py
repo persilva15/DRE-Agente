@@ -84,8 +84,7 @@ def login():
     
     name, authentication_status, username = authenticator.login(
         'Login', 
-        'sidebar',
-        location='main'
+        'sidebar'
     )
     
     return name, authentication_status, username, authenticator
@@ -120,8 +119,8 @@ def criar_usuario(username: str, email: str, name: str, password: str) -> bool:
         return False
     
     # Gerar hash da senha
-    hasher = stauth.Hasher([password])
-    hashed_password = hasher.generate([password])[0]
+    hasher = stauth.Hasher()
+    hashed_password = hasher.hash(password)
     
     # Adicionar usuário
     config['credentials']['usernames'][username] = {
@@ -254,7 +253,32 @@ def renderizar_admin():
 
 def inicializar_admin_padrao():
     """Cria o usuário admin padrão se não existir."""
-    if not usuario_existe('admin'):
-        # Senha padrão: admin123
-        criar_usuario('admin', 'admin@febracis.com.br', 'Administrador', 'admin123')
-        print("[AUTH] Usuário admin padrão criado (senha: admin123)")
+    try:
+        if not os.path.exists(CONFIG_PATH):
+            # Criar config com admin
+            hasher = stauth.Hasher()
+            hashed_password = hasher.hash('admin123')
+            
+            default_config = {
+                'credentials': {
+                    'usernames': {
+                        'admin': {
+                            'email': 'admin@febracis.com.br',
+                            'name': 'Administrador',
+                            'password': hashed_password,
+                        }
+                    }
+                },
+                'cookie': {
+                    'expiry_days': 30,
+                    'key': 'dre_febracis_key',
+                    'name': 'dre_febracis_cookie',
+                },
+                'preauthorized': {
+                    'emails': ['admin@febracis.com.br']
+                }
+            }
+            save_config(default_config)
+            print("[AUTH] Usuário admin padrão criado (senha: admin123)")
+    except Exception as e:
+        print(f"[AUTH] Erro ao inicializar admin: {e}")
