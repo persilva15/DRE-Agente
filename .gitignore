@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ambiente
+.env
+.venv/
+venv/
+env/
+
+# Cache
+cache/
+*.parquet
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Logs
+*.log
+
+# Temp
+*.tmp
+*.bak
+test_measure.py
+
+# CSVs não comprimidos (versionar apenas .csv.gz)
+csv_data/*.csv
+
+# IDE
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Streamlit Cloud (csv_data será versionado)
+# csv_data/
+
+# Arquivos desnecessários para deploy
+logo_cor.png
+Logo_Febracis.jpeg
+Logo_Febracis.webp
+logo_transparente.png
+iniciar.bat
+validar.py
+export_log.txt
+fix_logo.py
+fix_sidebar.py
