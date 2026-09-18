@@ -92,13 +92,13 @@ def get_authenticator():
 def login():
     """Realiza login. Retorna (name, auth_status, username, authenticator)."""
     authenticator = get_authenticator()
-    name, authentication_status, username = authenticator.login("Login", "sidebar")
+    name, authentication_status, username = authenticator.login(location="sidebar")
     return name, authentication_status, username, authenticator
 
 
 def logout(authenticator):
     """Realiza logout."""
-    authenticator.logout("Sair", "sidebar")
+    authenticator.logout(location="sidebar")
 
 
 def eh_admin(username: str) -> bool:
