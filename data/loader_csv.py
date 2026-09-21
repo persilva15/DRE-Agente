@@ -80,7 +80,10 @@ class DataLoaderCSV:
 
     def load_plano_contas(self) -> pd.DataFrame:
         """Carrega tabela Plano de Contas (Dim)."""
-        return self._read_csv("plano_contas.csv")
+        df = self._read_csv("plano_contas.csv")
+        if not df.empty and "Cod Conta" in df.columns:
+            df["Cod Conta"] = pd.to_numeric(df["Cod Conta"], errors="coerce").fillna(0).astype(int)
+        return df
 
     def load_mascara_dre(self) -> pd.DataFrame:
         """Carrega tabela Mascara DRE."""
@@ -93,15 +96,21 @@ class DataLoaderCSV:
     def load_realizado_2025(self) -> pd.DataFrame:
         """Carrega Realizado 2025 (congelado)."""
         df = self._read_csv("real_2025.csv")
-        if not df.empty and "DATA_EMISSAO" in df.columns:
-            df["DATA_EMISSAO"] = pd.to_datetime(df["DATA_EMISSAO"], errors="coerce")
+        if not df.empty:
+            if "DATA_EMISSAO" in df.columns:
+                df["DATA_EMISSAO"] = pd.to_datetime(df["DATA_EMISSAO"], errors="coerce")
+            if "Cod_conta_aux" in df.columns:
+                df["Cod_conta_aux"] = pd.to_numeric(df["Cod_conta_aux"], errors="coerce").fillna(0).astype(int)
         return df
 
     def load_realizado_2026(self) -> pd.DataFrame:
         """Carrega Realizado 2026 (TOTVS)."""
         df = self._read_csv("real_2026.csv")
-        if not df.empty and "DATA_EMISSAO" in df.columns:
-            df["DATA_EMISSAO"] = pd.to_datetime(df["DATA_EMISSAO"], errors="coerce")
+        if not df.empty:
+            if "DATA_EMISSAO" in df.columns:
+                df["DATA_EMISSAO"] = pd.to_datetime(df["DATA_EMISSAO"], errors="coerce")
+            if "Cod_conta_aux" in df.columns:
+                df["Cod_conta_aux"] = pd.to_numeric(df["Cod_conta_aux"], errors="coerce").fillna(0).astype(int)
         return df
 
     def load_orcado_2026(self) -> pd.DataFrame:
@@ -133,8 +142,8 @@ class DataLoaderCSV:
         # Extrair Cod_conta_aux de CODCONTA
         if "CODCONTA" in df.columns:
             df["Cod_conta_aux"] = df["CODCONTA"].apply(
-                lambda x: int(str(x).split(".")[-1]) if pd.notna(x) and "." in str(x) else None
-            )
+                lambda x: int(str(x).split(".")[-1]) if pd.notna(x) and "." in str(x) else 0
+            ).astype(int)
 
         # Mapear CODCOLIGADA para nome da empresa
         if "CODCOLIGADA" in df.columns:
