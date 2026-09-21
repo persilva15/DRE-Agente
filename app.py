@@ -226,15 +226,32 @@ try:
     responder = Responder(dre_logic)
     parser = QuestionParser()
     
-    # Diagnóstico (apenas cloud)
+    # Diagnóstico detalhado (apenas cloud)
     if IS_CLOUD:
         with st.sidebar.expander("  Diagnóstico de Dados"):
             for key in ["base_real_2025", "base_orcado", "base_forecast", "mascara_dre", "plano_contas"]:
                 df = data.get(key)
                 if df is not None and not df.empty:
-                    st.write(f"**{key}**: {len(df)} linhas, cols: {list(df.columns)[:5]}...")
+                    st.write(f"**{key}**: {len(df)} linhas, {len(df.columns)} cols")
+                    st.caption(f"Cols: {list(df.columns)[:8]}")
                 else:
                     st.write(f"**{key}**: VAZIO ou None")
+            
+            # Testar merge realizado
+            st.markdown("---")
+            st.write("**Teste merge realizado:**")
+            real = data.get("base_real_2025")
+            pc = data.get("plano_contas")
+            if real is not None and not real.empty and pc is not None:
+                st.write(f"real Cod_conta_aux dtype: {real['Cod_conta_aux'].dtype if 'Cod_conta_aux' in real.columns else 'AUSENTE'}")
+                st.write(f"pc Cod Conta dtype: {pc['Cod Conta'].dtype if 'Cod Conta' in pc.columns else 'AUSENTE'}")
+                if "Cod_conta_aux" in real.columns and "Cod Conta" in pc.columns:
+                    test = real.merge(pc[["Cod Conta", "Nivel 1"]], left_on="Cod_conta_aux", right_on="Cod Conta", how="left")
+                    st.write(f"Nivel 1 null: {test['Nivel 1'].isna().sum()}/{len(test)}")
+                    if "Nivel 1" in test.columns:
+                        st.write(f"VALOR sum por Nivel 1:")
+                        grp = test.groupby("Nivel 1")["VALOR_CONTA_V2"].sum()
+                        st.dataframe(grp)
 except Exception as e:
     st.error(f"Erro ao carregar dados: {e}")
     st.stop()
