@@ -225,6 +225,16 @@ try:
     dre_logic = DRELogic(data)
     responder = Responder(dre_logic)
     parser = QuestionParser()
+    
+    # Diagnóstico (apenas cloud)
+    if IS_CLOUD:
+        with st.sidebar.expander("  Diagnóstico de Dados"):
+            for key in ["base_real_2025", "base_orcado", "base_forecast", "mascara_dre", "plano_contas"]:
+                df = data.get(key)
+                if df is not None and not df.empty:
+                    st.write(f"**{key}**: {len(df)} linhas, cols: {list(df.columns)[:5]}...")
+                else:
+                    st.write(f"**{key}**: VAZIO ou None")
 except Exception as e:
     st.error(f"Erro ao carregar dados: {e}")
     st.stop()
