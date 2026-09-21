@@ -105,12 +105,57 @@ class DataLoaderCSV:
         return df
 
     def load_orcado_2026(self) -> pd.DataFrame:
-        """Carrega Orçado 2026."""
-        return self._read_csv("orcado_2026.csv")
+        """Carrega Orçado 2026 e transforma para formato compatível."""
+        df = self._read_csv("orcado_2026.csv")
+        if df.empty:
+            return df
+        return self._transformar_orcado_forecast(df)
 
     def load_forecast_2026(self) -> pd.DataFrame:
-        """Carrega Forecast 2026."""
-        return self._read_csv("forecast_2026.csv")
+        """Carrega Forecast 2026 e transforma para formato compatível."""
+        df = self._read_csv("forecast_2026.csv")
+        if df.empty:
+            return df
+        return self._transformar_orcado_forecast(df)
+
+    def _transformar_orcado_forecast(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Transforma dados pivotados (colunas de mês) em formato melt (compatível com dre_logic)."""
+        # Identificar colunas mensais (que são datas como strings)
+        monthly_cols = []
+        for col in df.columns:
+            col_str = str(col)
+            if "2026-" in col_str and "00:00" in col_str:
+                monthly_cols.append(col)
+
+        if not monthly_cols:
+            return df
+
+        # Extrair Cod_conta_aux de CODCONTA
+        if "CODCONTA" in df.columns:
+            df["Cod_conta_aux"] = df["CODCONTA"].apply(
+                lambda x: int(str(x).split(".")[-1]) if pd.notna(x) and "." in str(x) else None
+            )
+
+        # Mapear CODCOLIGADA para nome da empresa
+        if "CODCOLIGADA" in df.columns:
+            df["Empresa"] = df["CODCOLIGADA"].map(EMPRESAS_MAP)
+
+        # Melt: transformar colunas mensais em linhas
+        id_cols = [c for c in ["CODCOLIGADA", "CODFILIAL", "CODCONTA", "CODCCUSTO", "ANO", "Cod_conta_aux", "Empresa", "DESCCONTA"] if c in df.columns]
+        df_melted = df.melt(
+            id_vars=id_cols,
+            value_vars=monthly_cols,
+            var_name="Atributo",
+            value_name="Valor",
+        )
+
+        # Converter Atributo para datetime
+        df_melted["Atributo"] = pd.to_datetime(df_melted["Atributo"], errors="coerce")
+
+        # Converter Valor para numérico
+        df_melted["Valor"] = pd.to_numeric(df_melted["Valor"], errors="coerce").fillna(0)
+
+        return df_melted
 
     def load_realizado_combinado(self) -> pd.DataFrame:
         """Combina Realizado 2025 + 2026 (compatibilidade com loader local)."""
