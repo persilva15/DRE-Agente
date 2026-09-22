@@ -257,17 +257,34 @@ except Exception as e:
     st.stop()
 
 # =============================================================================
-# KPI CARDS
+# KPI CARDS + DADOS HIERÁRQUICOS (com drill-down)
 # =============================================================================
 
-# Tentar usar XMLA primeiro (dados idênticos ao Power BI - Visão Total)
-dre_completo = dre_logic.calcular_dre_luciana(empresa_filtro, meses_ate=mes_atual or 9, ano=ano_selecionado)
+# Tentar hierárquico primeiro (com Nivel 1->2->3 para drill-down)
+try:
+    dre_hier = dre_logic.calcular_dre_hierarquico(empresa_filtro, mes_atual, ano_selecionado)
+except Exception:
+    dre_hier = []
 
-# Se XMLA não retornou dados, usar método antigo
-if not dre_completo:
-    dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, ano_selecionado)
+# Se hierárquico falhou ou está vazio, tentar XMLA / fallback plano
+if not dre_hier:
+    dre_completo = dre_logic.calcular_dre_luciana(empresa_filtro, meses_ate=mes_atual or 9, ano=ano_selecionado)
+    if not dre_completo:
+        dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, ano_selecionado)
+    # Converter para formato hierárquico (todos level 1)
+    dre_hier = []
+    for r in dre_completo:
+        dre_hier.append({
+            **r,
+            "nivel_2": None, "nivel_3": None,
+            "nivel_label": r["nivel_1"],
+            "level": 1, "parent": None, "has_children": False,
+        })
 
-# Receita Bruta para KPIs
+# Usar dre_hier como fonte principal (compatível com dre_completo para KPIs)
+dre_completo = [r for r in dre_hier if r.get("level", 1) == 1]
+
+# Receita Bruta para KPIs (sempre do Nivel 1)
 rb_r25 = 0
 rb_f26 = 0
 rb_r26 = 0
@@ -330,11 +347,11 @@ st.markdown("""
     periodo=f"Até {MESES_NOMES[mes_atual]}/{ano_selecionado}" if mes_atual else f"Ano {ano_selecionado}"
 ), unsafe_allow_html=True)
 
-# Converter para DataFrame para exibição estilizada
+# Converter hierarquia para DataFrame (inclui Nivel 2 e 3 para drill-down)
 rows = []
-for row in dre_completo:
+for row in dre_hier:
     rows.append({
-        "Linha DRE": row["nivel_1"],
+        "Linha DRE": row.get("nivel_label", row.get("nivel_1", "")),
         "R 2025 (R$)": row["r_2025"],
         "AV 25": row["av_2025"],
         "F 2026 (R$)": row["f_2026"],
@@ -350,6 +367,10 @@ for row in dre_completo:
         "Var F26 vs O26 %": row["var_f26_o26_pct"],
         "Var F26 vs O26 R$": row["var_f26_o26_rs"],
         "_subtotal": row["subtotal"] == "S",
+        "_level": row.get("level", 1),
+        "_parent": row.get("parent"),
+        "_has_children": row.get("has_children", False),
+        "_label": row.get("nivel_label", row.get("nivel_1", "")),
     })
 
 df_dre = pd.DataFrame(rows)
@@ -379,9 +400,9 @@ def style_dre_table(df):
     
     return styled
 
-# Exibir tabela com coluna Linha DRE congelada
+# Exibir tabela com coluna Linha DRE congelada + drill-down hierárquico
 def render_dre_table_html(df):
-    """Renderiza tabela DRE como HTML com coluna A congelada."""
+    """Renderiza tabela DRE como HTML com coluna A congelada e drill-down Nivel 1->2->3."""
     
     def fmt_rs(v):
         if v == 0: return "R$ -"
@@ -406,34 +427,85 @@ def render_dre_table_html(df):
     ]
     
     header_html = "".join(
-        f'<th style="white-space:nowrap;{"text-align:left;min-width:220px;position:sticky;left:0;z-index:5;background:var(--bg-deep);box-shadow:2px 0 5px rgba(0,0,0,0.5);" if i==0 else ""}">{c[0]}</th>'
+        f'<th style="white-space:nowrap;{"text-align:left;min-width:280px;position:sticky;left:0;z-index:5;background:var(--bg-deep);box-shadow:2px 0 5px rgba(0,0,0,0.5);" if i==0 else ""}">{c[0]}</th>'
         for i, c in enumerate(cols)
     )
     
     rows_html = ""
     linhas_destaque = {"Receita Bruta", "Receita Líquida", "Lucro Bruto (R$)", "Ebitda", "Lucro/Prejuízo Do Exercício"}
-    for _, row in df.iterrows():
+    tem_hierarquia = "_level" in df.columns
+
+    for idx, row in df.iterrows():
         nivel_1 = str(row.get("Linha DRE", "")).strip()
         is_sub = row.get("_subtotal", False) or nivel_1 in linhas_destaque
-        cls = ' class="subtotal"' if is_sub else ""
+        level = int(row.get("_level", 1)) if tem_hierarquia else 1
+        parent = str(row.get("_parent", "")) if tem_hierarquia else ""
+        has_children = bool(row.get("_has_children", False)) if tem_hierarquia else False
+        label = str(row.get("_label", nivel_1))
+
+        # Classe e atributos para hierarquia
+        tr_classes = []
+        if is_sub:
+            tr_classes.append("subtotal")
+        if level == 1 and not is_sub and has_children:
+            tr_classes.append("has-children")
+        tr_class_attr = f' class="{" ".join(tr_classes)}"' if tr_classes else ""
+
+        hidden = " hidden-row" if level > 1 else ""
+        if hidden:
+            tr_class_attr = f' class="{(" ".join(tr_classes) + hidden).strip()}"' if tr_classes else ' class="hidden-row"'
+
+        # data attributes para JS
+        data_attrs = ""
+        if tem_hierarquia:
+            # Escapar aspas simples no label/parent
+            esc_label = label.replace('"', '&quot;').replace("'", "&#39;")
+            esc_parent = parent.replace('"', '&quot;').replace("'", "&#39;")
+            data_attrs = f' data-level="{level}" data-label="{esc_label}" data-parent="{esc_parent}" data-expanded="false" data-has-children="{str(has_children).lower()}"'
+
         cells = ""
         for i, (col_name, tipo) in enumerate(cols):
             val = row[col_name]
             if tipo == "text":
-                cell_val = str(val)
-                if is_sub:
-                    style = 'text-align:left;min-width:220px;position:sticky;left:0;z-index:3;background:rgba(180,140,30,0.25) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:var(--gold);font-weight:700;white-space:nowrap;'
+                # Toggle icon
+                if level == 1 and has_children:
+                    toggle = '<span class="dre-toggle">+</span>'
+                elif level == 2 and has_children:
+                    toggle = '<span class="dre-toggle">+</span>'
+                elif level in (2, 3):
+                    toggle = '<span class="dre-toggle no-child"></span>'
                 else:
-                    bg = "#080a10" if row.name % 2 == 0 else "#0b0e16"
-                    style = f'text-align:left;min-width:220px;position:sticky;left:0;z-index:3;background:{bg} !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);white-space:nowrap;'
+                    toggle = '<span class="dre-toggle no-child" style="border-color:transparent;color:transparent;"></span>' if tem_hierarquia else ""
+
+                # Mostrar toggle apenas para quem tem filhos; caso contrário espaço
+                if level == 1 and not has_children:
+                    toggle = '<span class="dre-toggle no-child" style="border-color:transparent;"></span>' if tem_hierarquia else ""
+
+                cell_val = f'{toggle}{str(val)}'
+                if is_sub:
+                    style = 'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;background:rgba(180,140,30,0.25) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:var(--gold);font-weight:700;white-space:nowrap;'
+                else:
+                    bg = "#080a10" if idx % 2 == 0 else "#0b0e16"
+                    if level == 2:
+                        style = f'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;background:rgba(255,255,255,0.02) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:#bbb;white-space:nowrap;padding-left:30px !important;'
+                    elif level == 3:
+                        style = f'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;background:rgba(255,255,255,0.01) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:#999;white-space:nowrap;padding-left:52px !important;font-size:0.74rem;'
+                    else:
+                        style = f'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;background:{bg} !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);white-space:nowrap;'
             elif tipo == "rs":
                 cell_val = fmt_rs(val)
                 style = "text-align:right;white-space:nowrap;"
                 if is_sub:
                     style += "color:var(--gold);font-weight:700;"
+                elif level == 2:
+                    style += "color:#bbb;"
+                elif level == 3:
+                    style += "color:#999;font-size:0.78rem;"
             elif tipo == "av":
                 cell_val = fmt_av(val)
                 style = "text-align:right;white-space:nowrap;"
+                if level == 2: style += "color:#bbb;"
+                elif level == 3: style += "color:#999;font-size:0.78rem;"
             elif tipo == "pct":
                 cell_val = fmt_pct(val)
                 style = "text-align:right;white-space:nowrap;"
@@ -441,19 +513,87 @@ def render_dre_table_html(df):
                     style += "color:#4ade80;"
                 elif val < 0:
                     style += "color:#ef4444;"
+                if level == 3: style += "font-size:0.78rem;"
             else:
                 cell_val = str(val)
                 style = "white-space:nowrap;"
             cells += f'<td style="{style}">{cell_val}</td>'
-        rows_html += f'<tr{cls}>{cells}</tr>\n'
+        rows_html += f'<tr{tr_class_attr}{data_attrs}>{cells}</tr>\n'
     
+    drill_js = ""
+    if tem_hierarquia and df["_has_children"].any():
+        drill_js = """
+        <script>
+        (function() {
+            const table = document.currentScript ? document.currentScript.closest('div').previousElementSibling : null;
+            // Usar event delegation no container da tabela
+            document.addEventListener('click', function(e) {
+                const toggle = e.target.closest('.dre-toggle');
+                if (!toggle || toggle.classList.contains('no-child')) return;
+                const row = toggle.closest('tr');
+                if (!row || !row.dataset.level) return;
+                const level = parseInt(row.dataset.level);
+                const label = row.dataset.label;
+                const expanded = row.dataset.expanded === 'true';
+                const allRows = document.querySelectorAll('.dre-table tbody tr[data-level]');
+
+                if (expanded) {
+                    row.dataset.expanded = 'false';
+                    toggle.textContent = '+';
+                    // Colapsar: esconder todos os descendentes
+                    if (level === 1) {
+                        allRows.forEach(function(r) {
+                            if (r.dataset.parent === label) {
+                                r.classList.add('hidden-row');
+                                r.dataset.expanded = 'false';
+                                const t = r.querySelector('.dre-toggle');
+                                if (t) t.textContent = '+';
+                                // Esconder netos (Nivel 3) cujo parent é este Nivel 2
+                                const childLabel = r.dataset.label;
+                                allRows.forEach(function(g) {
+                                    if (g.dataset.parent === childLabel) {
+                                        g.classList.add('hidden-row');
+                                    }
+                                });
+                            }
+                        });
+                    } else if (level === 2) {
+                        allRows.forEach(function(r) {
+                            if (r.dataset.parent === label && r.dataset.level === '3') {
+                                r.classList.add('hidden-row');
+                            }
+                        });
+                    }
+                } else {
+                    row.dataset.expanded = 'true';
+                    toggle.textContent = '\\u2212';
+                    if (level === 1) {
+                        allRows.forEach(function(r) {
+                            if (r.dataset.parent === label && r.dataset.level === '2') {
+                                r.classList.remove('hidden-row');
+                            }
+                        });
+                    } else if (level === 2) {
+                        allRows.forEach(function(r) {
+                            if (r.dataset.parent === label && r.dataset.level === '3') {
+                                r.classList.remove('hidden-row');
+                            }
+                        });
+                    }
+                }
+            });
+        })();
+        </script>
+        """
+
     html = f"""
-    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border-card);box-shadow:var(--shadow-card);max-height:500px;">
+    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border-card);box-shadow:var(--shadow-card);max-height:520px;">
         <table class="dre-table">
             <thead><tr>{header_html}</tr></thead>
             <tbody>{rows_html}</tbody>
         </table>
     </div>
+    {drill_js}
     """
     return html
 
