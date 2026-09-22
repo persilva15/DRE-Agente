@@ -847,7 +847,7 @@ class DRELogic:
 
         resultado: list[dict] = []
 
-        for _, row_mascara in mascara_dre.iterrows():
+        for idx1, (_, row_mascara) in enumerate(mascara_dre.iterrows()):
             nivel_1 = row_mascara["Nivel 1"]
             ordem = row_mascara["Ordem"]
             subtotal = row_mascara["Subtotal"]
@@ -883,6 +883,7 @@ class DRELogic:
                 if len(possiveis_n2) > 0:
                     has_children = True
 
+            row_id = f"n1-{idx1}"
             resultado.append({
                 "nivel_1": nivel_1,
                 "nivel_2": None,
@@ -890,6 +891,8 @@ class DRELogic:
                 "nivel_label": nivel_1,
                 "level": 1,
                 "parent": None,
+                "_id": row_id,
+                "_parent_id": "",
                 "ordem": ordem,
                 "subtotal": subtotal,
                 "has_children": has_children,
@@ -909,7 +912,7 @@ class DRELogic:
             # Usar plano_contas para listar Nivel 2 esperados, mas filtrar só os que têm algum valor
             pc_n2 = plano_contas[plano_contas["Nivel 1"] == nivel_1]
             nivel2_unicos = pc_n2["Nivel 2"].dropna().unique()
-            for n2 in nivel2_unicos:
+            for idx2, n2 in enumerate(nivel2_unicos):
                 n2_str = str(n2).strip()
                 if not n2_str:
                     continue
@@ -949,6 +952,7 @@ class DRELogic:
                 pc_n3_check = plano_contas[(plano_contas["Nivel 1"] == nivel_1) & (plano_contas["Nivel 2"] == n2)]
                 has_n3 = pc_n3_check["Nivel 3"].dropna().nunique() > 0
 
+                n2_id = f"n2-{idx1}-{idx2}"
                 resultado.append({
                     "nivel_1": nivel_1,
                     "nivel_2": n2,
@@ -956,6 +960,8 @@ class DRELogic:
                     "nivel_label": n2,
                     "level": 2,
                     "parent": nivel_1,
+                    "_id": n2_id,
+                    "_parent_id": row_id,
                     "ordem": ordem,
                     "subtotal": "N",
                     "has_children": has_n3,
@@ -971,7 +977,7 @@ class DRELogic:
                 # --- Nivel 3 ---
                 pc_n3 = plano_contas[(plano_contas["Nivel 1"] == nivel_1) & (plano_contas["Nivel 2"] == n2)]
                 nivel3_unicos = pc_n3["Nivel 3"].dropna().unique()
-                for n3 in nivel3_unicos:
+                for idx3, n3 in enumerate(nivel3_unicos):
                     n3_str = str(n3).strip()
                     if not n3_str:
                         continue
@@ -1006,6 +1012,7 @@ class DRELogic:
                     var3_f26_o26_pct = (var3_f26_o26_rs / abs(v3_o26)) if v3_o26 != 0 else 0
                     if inverter: var3_f26_o26_pct *= -1
 
+                    n3_id = f"n3-{idx1}-{idx2}-{idx3}"
                     resultado.append({
                         "nivel_1": nivel_1,
                         "nivel_2": n2,
@@ -1013,6 +1020,8 @@ class DRELogic:
                         "nivel_label": n3,
                         "level": 3,
                         "parent": n2,
+                        "_id": n3_id,
+                        "_parent_id": n2_id,
                         "ordem": ordem,
                         "subtotal": "N",
                         "has_children": False,

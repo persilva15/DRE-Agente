@@ -272,29 +272,32 @@ try:
 except Exception as e:
     dre_hier_full = []
 
-# Montar lista combinada: Nivel 1 (valores oficiais) + filhos Nivel 2/3 do hierárquico
-# Indexar filhos por parent
-hier_filhos_por_parent: dict = {}
-for r in dre_hier_full:
-    lvl = r.get("level", 1)
-    if lvl > 1:
-        parent = r.get("parent")
-        hier_filhos_por_parent.setdefault(parent, []).append(r)
-
-dre_hier = []
-for r in dre_completo:
-    nivel1 = r["nivel_1"]
-    # Nivel 1 com valores oficiais
-    tem_filhos = nivel1 in hier_filhos_por_parent
-    dre_hier.append({
-        **r,
-        "nivel_2": None, "nivel_3": None,
-        "nivel_label": nivel1,
-        "level": 1, "parent": None, "has_children": tem_filhos,
-    })
-    # Adicionar filhos logo após o pai (para expandir/colapsar funcionar)
-    for filho in hier_filhos_por_parent.get(nivel1, []):
-        dre_hier.append(filho)
+# Se hierárquico existe, atualizar seus Nivel 1 com valores oficiais (XMLA) para bater com Power BI
+if dre_hier_full:
+    oficial_por_nivel = {r["nivel_1"]: r for r in dre_completo}
+    for rh in dre_hier_full:
+        if rh.get("level", 1) == 1:
+            niv = rh["nivel_1"]
+            if niv in oficial_por_nivel:
+                off = oficial_por_nivel[niv]
+                # Preservar _id, _parent_id, level, parent, has_children, mas atualizar valores
+                for k in ["r_2025","av_2025","f_2026","av_f26","r_2026","av_2026","o_2026","av_o_2026",
+                          "var_f26_r25_pct","var_f26_r25_rs","var_f26_r26_pct","var_f26_r26_rs",
+                          "var_f26_o26_pct","var_f26_o26_rs"]:
+                    rh[k] = off[k]
+    dre_hier = dre_hier_full
+else:
+    # Fallback sem hierarquia (todos level 1)
+    dre_hier = []
+    for r in dre_completo:
+        dre_hier.append({
+            **r,
+            "nivel_2": None, "nivel_3": None,
+            "nivel_label": r["nivel_1"],
+            "level": 1, "parent": None,
+            "_id": f"n1-{len(dre_hier)}", "_parent_id": "",
+            "has_children": False,
+        })
 
 # Receita Bruta para KPIs (sempre do Nivel 1)
 rb_r25 = 0
@@ -381,6 +384,8 @@ for row in dre_hier:
         "_subtotal": row["subtotal"] == "S",
         "_level": row.get("level", 1),
         "_parent": row.get("parent"),
+        "_id": row.get("_id", ""),
+        "_parent_id": row.get("_parent_id", ""),
         "_has_children": row.get("has_children", False),
         "_label": row.get("nivel_label", row.get("nivel_1", "")),
     })
@@ -451,9 +456,10 @@ def render_dre_table_html(df):
         nivel_1 = str(row.get("Linha DRE", "")).strip()
         is_sub = row.get("_subtotal", False) or nivel_1 in linhas_destaque
         level = int(row.get("_level", 1)) if tem_hierarquia else 1
-        parent = str(row.get("_parent", "")) if tem_hierarquia else ""
         has_children = bool(row.get("_has_children", False)) if tem_hierarquia else False
         label = str(row.get("_label", nivel_1))
+        row_id = str(row.get("_id", f"r-{idx}")) if tem_hierarquia else f"r-{idx}"
+        parent_id = str(row.get("_parent_id", "")) if tem_hierarquia else ""
 
         # Classe e atributos para hierarquia
         tr_classes = []
@@ -467,13 +473,11 @@ def render_dre_table_html(df):
         if hidden:
             tr_class_attr = f' class="{(" ".join(tr_classes) + hidden).strip()}"' if tr_classes else ' class="hidden-row"'
 
-        # data attributes para JS
+        # data attributes para JS - usar IDs para matching robusto (evita encoding de labels)
         data_attrs = ""
         if tem_hierarquia:
-            # Escapar aspas simples no label/parent
             esc_label = label.replace('"', '&quot;').replace("'", "&#39;")
-            esc_parent = parent.replace('"', '&quot;').replace("'", "&#39;")
-            data_attrs = f' data-level="{level}" data-label="{esc_label}" data-parent="{esc_parent}" data-expanded="false" data-has-children="{str(has_children).lower()}"'
+            data_attrs = f' data-level="{level}" data-id="{row_id}" data-parent-id="{parent_id}" data-label="{esc_label}" data-expanded="false" data-has-children="{str(has_children).lower()}"'
 
         cells = ""
         for i, (col_name, tipo) in enumerate(cols):
@@ -541,7 +545,7 @@ def render_dre_table_html(df):
             var row = toggle.closest('tr');
             if (!row || !row.dataset.level) return;
             var level = parseInt(row.dataset.level);
-            var label = row.dataset.label;
+            var rowId = row.dataset.id;
             var expanded = row.dataset.expanded === 'true';
             var allRows = document.querySelectorAll('.dre-table tbody tr[data-level]');
             if (expanded) {
@@ -549,14 +553,14 @@ def render_dre_table_html(df):
                 toggle.textContent = '+';
                 if (level === 1) {
                     allRows.forEach(function(r) {
-                        if (r.dataset.parent === label) {
+                        if (r.dataset.parentId === rowId) {
                             r.classList.add('hidden-row');
                             r.dataset.expanded = 'false';
                             var t = r.querySelector('.dre-toggle');
                             if (t) t.textContent = '+';
-                            var childLabel = r.dataset.label;
+                            var childId = r.dataset.id;
                             allRows.forEach(function(g) {
-                                if (g.dataset.parent === childLabel) {
+                                if (g.dataset.parentId === childId) {
                                     g.classList.add('hidden-row');
                                 }
                             });
@@ -564,7 +568,7 @@ def render_dre_table_html(df):
                     });
                 } else if (level === 2) {
                     allRows.forEach(function(r) {
-                        if (r.dataset.parent === label && r.dataset.level === '3') {
+                        if (r.dataset.parentId === rowId && r.dataset.level === '3') {
                             r.classList.add('hidden-row');
                         }
                     });
@@ -574,13 +578,13 @@ def render_dre_table_html(df):
                 toggle.textContent = '\\u2212';
                 if (level === 1) {
                     allRows.forEach(function(r) {
-                        if (r.dataset.parent === label && r.dataset.level === '2') {
+                        if (r.dataset.parentId === rowId && r.dataset.level === '2') {
                             r.classList.remove('hidden-row');
                         }
                     });
                 } else if (level === 2) {
                     allRows.forEach(function(r) {
-                        if (r.dataset.parent === label && r.dataset.level === '3') {
+                        if (r.dataset.parentId === rowId && r.dataset.level === '3') {
                             r.classList.remove('hidden-row');
                         }
                     });
