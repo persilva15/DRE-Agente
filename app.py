@@ -76,6 +76,8 @@ inject_styles()
 # =============================================================================
 
 render_exec_header("DRE vs Orçamento 26 · Inteligência Financeira")
+# Indicador de versão para debug da nuvem
+st.caption("Versão: 9ba1575-v4 | Cache v3 | Fix R25 drill-down")
 
 # =============================================================================
 # SIDEBAR
