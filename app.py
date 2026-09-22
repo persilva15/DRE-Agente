@@ -545,49 +545,33 @@ def render_dre_table_html(df):
             var row = toggle.closest('tr');
             if (!row || !row.dataset.level) return;
             var level = parseInt(row.dataset.level);
-            var rowId = row.dataset.id;
             var expanded = row.dataset.expanded === 'true';
-            var allRows = document.querySelectorAll('.dre-table tbody tr[data-level]');
             if (expanded) {
                 row.dataset.expanded = 'false';
                 toggle.textContent = '+';
-                if (level === 1) {
-                    allRows.forEach(function(r) {
-                        if (r.dataset.parentId === rowId) {
-                            r.classList.add('hidden-row');
-                            r.dataset.expanded = 'false';
-                            var t = r.querySelector('.dre-toggle');
-                            if (t) t.textContent = '+';
-                            var childId = r.dataset.id;
-                            allRows.forEach(function(g) {
-                                if (g.dataset.parentId === childId) {
-                                    g.classList.add('hidden-row');
-                                }
-                            });
-                        }
-                    });
-                } else if (level === 2) {
-                    allRows.forEach(function(r) {
-                        if (r.dataset.parentId === rowId && r.dataset.level === '3') {
-                            r.classList.add('hidden-row');
-                        }
-                    });
+                // Colapsar: esconder todos os descendentes usando ordem do DOM
+                var next = row.nextElementSibling;
+                while (next) {
+                    var nl = parseInt(next.dataset.level || '0');
+                    if (nl <= level) break;
+                    next.classList.add('hidden-row');
+                    next.dataset.expanded = 'false';
+                    var t = next.querySelector('.dre-toggle');
+                    if (t && !t.classList.contains('no-child')) t.textContent = '+';
+                    next = next.nextElementSibling;
                 }
             } else {
                 row.dataset.expanded = 'true';
                 toggle.textContent = '\\u2212';
-                if (level === 1) {
-                    allRows.forEach(function(r) {
-                        if (r.dataset.parentId === rowId && r.dataset.level === '2') {
-                            r.classList.remove('hidden-row');
-                        }
-                    });
-                } else if (level === 2) {
-                    allRows.forEach(function(r) {
-                        if (r.dataset.parentId === rowId && r.dataset.level === '3') {
-                            r.classList.remove('hidden-row');
-                        }
-                    });
+                // Expandir: mostrar apenas filhos diretos (proximo nivel)
+                var next = row.nextElementSibling;
+                while (next) {
+                    var nl = parseInt(next.dataset.level || '0');
+                    if (nl <= level) break;
+                    if (nl === level + 1) {
+                        next.classList.remove('hidden-row');
+                    }
+                    next = next.nextElementSibling;
                 }
             }
         }
