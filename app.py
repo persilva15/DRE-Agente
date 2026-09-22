@@ -177,8 +177,8 @@ with st.sidebar:
 # CARREGAR DADOS
 # =============================================================================
 
-@st.cache_data(ttl=3600, show_spinner="Carregando dados...")
-def carregar_dados_base():
+@st.cache_data(ttl=300, show_spinner="Carregando dados...")
+def carregar_dados_base(_cache_version="v3-fix-r25"):
     """Carrega dados baseado no ambiente (local ou nuvem)."""
     if IS_CLOUD and GITHUB_CSV_URL:
         # Modo nuvem: ler CSVs do GitHub
@@ -227,9 +227,9 @@ try:
     responder = Responder(dre_logic)
     parser = QuestionParser()
     
-    # Diagnóstico detalhado (apenas cloud)
+    # Diagnóstico detalhado (apenas cloud) - v2 com hierarquia
     if IS_CLOUD:
-        with st.sidebar.expander("  Diagnóstico de Dados"):
+        with st.sidebar.expander("  Diagnóstico de Dados", expanded=False):
             for key in ["base_real_2025", "base_orcado", "base_forecast", "mascara_dre", "plano_contas"]:
                 df = data.get(key)
                 if df is not None and not df.empty:
@@ -238,7 +238,34 @@ try:
                 else:
                     st.write(f"**{key}**: VAZIO ou None")
             
-            # Testar merge realizado
+            # Teste hierarquia vs Nivel1
+            try:
+                tmp_hier = dre_logic.calcular_dre_hierarquico(empresa_filtro, mes_atual, 2026)
+                # Encontrar Receita Bruta
+                for r in tmp_hier:
+                    if r.get('nivel_1')=='Receita Bruta' and r.get('level')==1:
+                        st.write(f"**Hier L1 Receita Bruta** R25={r['r_2025']:,.0f} F26={r['f_2026']:,.0f} R26={r['r_2026']:,.0f}")
+                        break
+                for r in tmp_hier:
+                    if r.get('parent')=='Receita Bruta' and r.get('level')==2:
+                        st.write(f"L2 {r['nivel_label'][:20]} R25={r['r_2025']:,.0f} F26={r['f_2026']:,.0f} R26={r['r_2026']:,.0f}")
+                # Verificar soma
+                from collections import defaultdict
+                l2_by_parent=defaultdict(list)
+                for r in tmp_hier:
+                    if r.get('level')==2:
+                        l2_by_parent[r['parent']].append(r)
+                for parent, lst in l2_by_parent.items():
+                    if parent=='Receita Bruta':
+                        s_r25=sum(c['r_2025'] for c in lst)
+                        s_f26=sum(c['f_2026'] for c in lst)
+                        s_r26=sum(c['r_2026'] for c in lst)
+                        st.caption(f"Soma filhos R25 {s_r25:,.0f} F26 {s_f26:,.0f} R26 {s_r26:,.0f}")
+                        break
+            except Exception as e:
+                st.write(f"Erro hier debug: {e}")
+
+            # Teste merge realizado
             st.markdown("---")
             st.write("**Teste merge realizado:**")
             real = data.get("base_real_2025")
