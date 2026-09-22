@@ -815,8 +815,8 @@ class DRELogic:
         mascara_dre = self.data["mascara_dre"].sort_values("Ordem")
         plano_contas = self.data.get("plano_contas")
 
-        # Totais Nivel 1 (reusa lógica existente)
-        r_2025 = self.calcular_realizado(empresa, mes, ano_ref)
+        # Totais Nivel 1 (sempre 2025 para R2025, 2026 para R2026)
+        r_2025 = self.calcular_realizado(empresa, mes, 2025)
         r_2026 = self.calcular_realizado(empresa, mes, 2026)
         o_2026 = self.calcular_orcado(empresa, mes)
         f_2026 = self.calcular_forecast(empresa, mes)
@@ -826,8 +826,8 @@ class DRELogic:
         rb_o26 = o_2026.get("Receita Bruta", {}).get("valor", 0)
         rb_f26 = f_2026.get("Receita Bruta", {}).get("valor", 0)
 
-        # DataFrames com merge para agregação Nivel 2/3
-        df_r25 = self._get_df_realizado_merged(empresa, mes, ano_ref)
+        # DataFrames com merge para agregação Nivel 2/3 (sempre 2025 para R25)
+        df_r25 = self._get_df_realizado_merged(empresa, mes, 2025)
         df_r26 = self._get_df_realizado_merged(empresa, mes, 2026)
         df_f26 = self._get_df_forecast_merged(empresa, mes)
         df_o26 = self._get_df_orcado_merged(empresa, mes)
