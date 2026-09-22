@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 # Carregar variáveis de ambiente do .env
@@ -260,29 +261,40 @@ except Exception as e:
 # KPI CARDS + DADOS HIERÁRQUICOS (com drill-down)
 # =============================================================================
 
-# Tentar hierárquico primeiro (com Nivel 1->2->3 para drill-down)
+# Tabela principal (valores oficiais - XMLA quando disponível, senão DataFrames)
+dre_completo = dre_logic.calcular_dre_luciana(empresa_filtro, meses_ate=mes_atual or 9, ano=ano_selecionado)
+if not dre_completo:
+    dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, ano_selecionado)
+
+# Hierarquia para drill-down (Nivel 2/3) - sempre via DataFrames
 try:
-    dre_hier = dre_logic.calcular_dre_hierarquico(empresa_filtro, mes_atual, ano_selecionado)
-except Exception:
-    dre_hier = []
+    dre_hier_full = dre_logic.calcular_dre_hierarquico(empresa_filtro, mes_atual, ano_selecionado)
+except Exception as e:
+    dre_hier_full = []
 
-# Se hierárquico falhou ou está vazio, tentar XMLA / fallback plano
-if not dre_hier:
-    dre_completo = dre_logic.calcular_dre_luciana(empresa_filtro, meses_ate=mes_atual or 9, ano=ano_selecionado)
-    if not dre_completo:
-        dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, ano_selecionado)
-    # Converter para formato hierárquico (todos level 1)
-    dre_hier = []
-    for r in dre_completo:
-        dre_hier.append({
-            **r,
-            "nivel_2": None, "nivel_3": None,
-            "nivel_label": r["nivel_1"],
-            "level": 1, "parent": None, "has_children": False,
-        })
+# Montar lista combinada: Nivel 1 (valores oficiais) + filhos Nivel 2/3 do hierárquico
+# Indexar filhos por parent
+hier_filhos_por_parent: dict = {}
+for r in dre_hier_full:
+    lvl = r.get("level", 1)
+    if lvl > 1:
+        parent = r.get("parent")
+        hier_filhos_por_parent.setdefault(parent, []).append(r)
 
-# Usar dre_hier como fonte principal (compatível com dre_completo para KPIs)
-dre_completo = [r for r in dre_hier if r.get("level", 1) == 1]
+dre_hier = []
+for r in dre_completo:
+    nivel1 = r["nivel_1"]
+    # Nivel 1 com valores oficiais
+    tem_filhos = nivel1 in hier_filhos_por_parent
+    dre_hier.append({
+        **r,
+        "nivel_2": None, "nivel_3": None,
+        "nivel_label": nivel1,
+        "level": 1, "parent": None, "has_children": tem_filhos,
+    })
+    # Adicionar filhos logo após o pai (para expandir/colapsar funcionar)
+    for filho in hier_filhos_por_parent.get(nivel1, []):
+        dre_hier.append(filho)
 
 # Receita Bruta para KPIs (sempre do Nivel 1)
 rb_r25 = 0
@@ -586,18 +598,26 @@ def render_dre_table_html(df):
         </script>
         """
 
-    html = f"""
+    table_html = f"""
     <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border-card);box-shadow:var(--shadow-card);max-height:520px;">
         <table class="dre-table">
             <thead><tr>{header_html}</tr></thead>
             <tbody>{rows_html}</tbody>
         </table>
     </div>
-    {drill_js}
     """
-    return html
+    # JS separado para não ser escapado pelo markdown
+    full_html = table_html + drill_js
+    return full_html
 
-st.markdown(render_dre_table_html(df_dre), unsafe_allow_html=True)
+# Renderizar via components.html para JS funcionar (st.markdown stripa <script>)
+DreHtml = render_dre_table_html(df_dre)
+# Tentar components.html; fallback para markdown se falhar
+try:
+    from ui import EXECUTIVE_CSS
+    components.html(f"<html><head>{EXECUTIVE_CSS}</head><body style='margin:0;background:transparent;'>{DreHtml}</body></html>", height=620, scrolling=True)
+except Exception:
+    st.markdown(DreHtml, unsafe_allow_html=True)
 
 # =============================================================================
 # PERGUNTA DO USUÁRIO
