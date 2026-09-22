@@ -262,9 +262,10 @@ except Exception as e:
 # =============================================================================
 
 # Tabela principal (valores oficiais - XMLA quando disponível, senão DataFrames)
+# Sempre usar 2025 para R2025, independente do ano_selecionado (evita bug onde R25 vira 2026)
 dre_completo = dre_logic.calcular_dre_luciana(empresa_filtro, meses_ate=mes_atual or 9, ano=ano_selecionado)
 if not dre_completo:
-    dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, ano_selecionado)
+    dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, 2025)
 
 # Hierarquia para drill-down (Nivel 2/3) - sempre via DataFrames
 try:
