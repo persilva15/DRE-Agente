@@ -479,11 +479,11 @@ def render_dre_table_html(df):
         for i, (col_name, tipo) in enumerate(cols):
             val = row[col_name]
             if tipo == "text":
-                # Toggle icon
+                # Toggle icon - onclick direto para funcionar dentro do iframe do components.html
                 if level == 1 and has_children:
-                    toggle = '<span class="dre-toggle">+</span>'
+                    toggle = '<span class="dre-toggle" onclick="dreToggle(this)">+</span>'
                 elif level == 2 and has_children:
-                    toggle = '<span class="dre-toggle">+</span>'
+                    toggle = '<span class="dre-toggle" onclick="dreToggle(this)">+</span>'
                 elif level in (2, 3):
                     toggle = '<span class="dre-toggle no-child"></span>'
                 else:
@@ -536,65 +536,57 @@ def render_dre_table_html(df):
     if tem_hierarquia and df["_has_children"].any():
         drill_js = """
         <script>
-        (function() {
-            const table = document.currentScript ? document.currentScript.closest('div').previousElementSibling : null;
-            // Usar event delegation no container da tabela
-            document.addEventListener('click', function(e) {
-                const toggle = e.target.closest('.dre-toggle');
-                if (!toggle || toggle.classList.contains('no-child')) return;
-                const row = toggle.closest('tr');
-                if (!row || !row.dataset.level) return;
-                const level = parseInt(row.dataset.level);
-                const label = row.dataset.label;
-                const expanded = row.dataset.expanded === 'true';
-                const allRows = document.querySelectorAll('.dre-table tbody tr[data-level]');
-
-                if (expanded) {
-                    row.dataset.expanded = 'false';
-                    toggle.textContent = '+';
-                    // Colapsar: esconder todos os descendentes
-                    if (level === 1) {
-                        allRows.forEach(function(r) {
-                            if (r.dataset.parent === label) {
-                                r.classList.add('hidden-row');
-                                r.dataset.expanded = 'false';
-                                const t = r.querySelector('.dre-toggle');
-                                if (t) t.textContent = '+';
-                                // Esconder netos (Nivel 3) cujo parent é este Nivel 2
-                                const childLabel = r.dataset.label;
-                                allRows.forEach(function(g) {
-                                    if (g.dataset.parent === childLabel) {
-                                        g.classList.add('hidden-row');
-                                    }
-                                });
-                            }
-                        });
-                    } else if (level === 2) {
-                        allRows.forEach(function(r) {
-                            if (r.dataset.parent === label && r.dataset.level === '3') {
-                                r.classList.add('hidden-row');
-                            }
-                        });
-                    }
-                } else {
-                    row.dataset.expanded = 'true';
-                    toggle.textContent = '\\u2212';
-                    if (level === 1) {
-                        allRows.forEach(function(r) {
-                            if (r.dataset.parent === label && r.dataset.level === '2') {
-                                r.classList.remove('hidden-row');
-                            }
-                        });
-                    } else if (level === 2) {
-                        allRows.forEach(function(r) {
-                            if (r.dataset.parent === label && r.dataset.level === '3') {
-                                r.classList.remove('hidden-row');
-                            }
-                        });
-                    }
+        function dreToggle(toggle) {
+            if (toggle.classList.contains('no-child')) return;
+            var row = toggle.closest('tr');
+            if (!row || !row.dataset.level) return;
+            var level = parseInt(row.dataset.level);
+            var label = row.dataset.label;
+            var expanded = row.dataset.expanded === 'true';
+            var allRows = document.querySelectorAll('.dre-table tbody tr[data-level]');
+            if (expanded) {
+                row.dataset.expanded = 'false';
+                toggle.textContent = '+';
+                if (level === 1) {
+                    allRows.forEach(function(r) {
+                        if (r.dataset.parent === label) {
+                            r.classList.add('hidden-row');
+                            r.dataset.expanded = 'false';
+                            var t = r.querySelector('.dre-toggle');
+                            if (t) t.textContent = '+';
+                            var childLabel = r.dataset.label;
+                            allRows.forEach(function(g) {
+                                if (g.dataset.parent === childLabel) {
+                                    g.classList.add('hidden-row');
+                                }
+                            });
+                        }
+                    });
+                } else if (level === 2) {
+                    allRows.forEach(function(r) {
+                        if (r.dataset.parent === label && r.dataset.level === '3') {
+                            r.classList.add('hidden-row');
+                        }
+                    });
                 }
-            });
-        })();
+            } else {
+                row.dataset.expanded = 'true';
+                toggle.textContent = '\\u2212';
+                if (level === 1) {
+                    allRows.forEach(function(r) {
+                        if (r.dataset.parent === label && r.dataset.level === '2') {
+                            r.classList.remove('hidden-row');
+                        }
+                    });
+                } else if (level === 2) {
+                    allRows.forEach(function(r) {
+                        if (r.dataset.parent === label && r.dataset.level === '3') {
+                            r.classList.remove('hidden-row');
+                        }
+                    });
+                }
+            }
+        }
         </script>
         """
 
