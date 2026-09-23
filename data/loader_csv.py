@@ -93,26 +93,12 @@ class DataLoaderCSV:
         """Carrega tabela Auxiliar (empresas)."""
         return self._read_csv("auxiliar.csv")
 
-    @staticmethod
-    def _normalizar_data_emissao(s: pd.Series) -> pd.Series:
-        """Converte DATA_EMISSAO para datetime naive (remove timezone)."""
-        dt = pd.to_datetime(s, errors="coerce", utc=True)
-        # dt é tz-aware (UTC); remover tz para ficar naive
-        try:
-            dt = dt.dt.tz_localize(None)
-        except Exception:
-            pass
-        # Fallback: se ainda houver tz, usar apply
-        if pd.api.types.is_datetime64tz_dtype(dt.dtype):
-            dt = dt.dt.tz_localize(None)
-        return dt
-
     def load_realizado_2025(self) -> pd.DataFrame:
         """Carrega Realizado 2025 (congelado)."""
         df = self._read_csv("real_2025.csv")
         if not df.empty:
             if "DATA_EMISSAO" in df.columns:
-                df["DATA_EMISSAO"] = self._normalizar_data_emissao(df["DATA_EMISSAO"])
+                df["DATA_EMISSAO"] = pd.to_datetime(df["DATA_EMISSAO"], errors="coerce")
             if "Cod_conta_aux" in df.columns:
                 df["Cod_conta_aux"] = pd.to_numeric(df["Cod_conta_aux"], errors="coerce").fillna(0).astype(int)
         return df
@@ -122,7 +108,7 @@ class DataLoaderCSV:
         df = self._read_csv("real_2026.csv")
         if not df.empty:
             if "DATA_EMISSAO" in df.columns:
-                df["DATA_EMISSAO"] = self._normalizar_data_emissao(df["DATA_EMISSAO"])
+                df["DATA_EMISSAO"] = pd.to_datetime(df["DATA_EMISSAO"], errors="coerce")
             if "Cod_conta_aux" in df.columns:
                 df["Cod_conta_aux"] = pd.to_numeric(df["Cod_conta_aux"], errors="coerce").fillna(0).astype(int)
         return df
@@ -195,11 +181,7 @@ class DataLoaderCSV:
             frames.append(df_2026)
         
         if frames:
-            df_comb = pd.concat(frames, ignore_index=True)
-            # Garantir que DATA_EMISSAO volte a ser datetime naive após concat
-            if "DATA_EMISSAO" in df_comb.columns:
-                df_comb["DATA_EMISSAO"] = pd.to_datetime(df_comb["DATA_EMISSAO"], errors="coerce", utc=True).dt.tz_localize(None)
-            return df_comb
+            return pd.concat(frames, ignore_index=True)
         return df_2025
 
     def load_retirar(self) -> pd.DataFrame:

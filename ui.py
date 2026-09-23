@@ -579,47 +579,6 @@ button[data-baseweb="tab"][aria-selected="true"] { color: var(--gold) !important
     border-top: 1px solid rgba(255,255,255,0.06);
     margin: 10px 16px;
 }
-
-/* --- DRE DRILL-DOWN HIERARQUIA --- */
-.dre-table tbody tr[data-level="1"] td:first-child { font-weight: 600; }
-.dre-table tbody tr[data-level="2"] td:first-child {
-    padding-left: 30px !important;
-    color: #bbb !important;
-    font-size: 0.78rem;
-    background: rgba(255,255,255,0.02) !important;
-}
-.dre-table tbody tr[data-level="3"] td:first-child {
-    padding-left: 52px !important;
-    color: #999 !important;
-    font-size: 0.74rem;
-    background: rgba(255,255,255,0.01) !important;
-}
-.dre-table tbody tr[data-level="2"],
-.dre-table tbody tr[data-level="3"] {
-    font-size: 0.78rem;
-}
-.dre-toggle {
-    display: inline-block;
-    width: 18px; height: 18px;
-    line-height: 18px;
-    text-align: center;
-    border-radius: 3px;
-    border: 1px solid rgba(232,178,59,0.35);
-    color: var(--gold);
-    font-size: 10px;
-    font-weight: 800;
-    cursor: pointer;
-    margin-right: 6px;
-    user-select: none;
-    vertical-align: middle;
-}
-.dre-toggle:hover { background: rgba(232,178,59,0.12); }
-.dre-toggle.no-child {
-    border-color: transparent;
-    color: transparent;
-    cursor: default;
-}
-.dre-table tbody tr.hidden-row { display: none !important; }
 </style>
 """
 

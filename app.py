@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 # Carregar variáveis de ambiente do .env
@@ -76,7 +75,6 @@ inject_styles()
 # =============================================================================
 
 render_exec_header("DRE vs Orçamento 26 · Inteligência Financeira")
-st.caption("Visão fiel ao Power BI — DRE vs Orçamento 26 (Visão José Alberto) · filtros de página aplicados")
 
 # =============================================================================
 # SIDEBAR
@@ -228,35 +226,87 @@ try:
     responder = Responder(dre_logic)
     parser = QuestionParser()
     
+    # Diagnóstico detalhado (apenas cloud) - v2 com hierarquia
     if IS_CLOUD:
-        with st.sidebar.expander("Diagnóstico de Dados", expanded=False):
+        with st.sidebar.expander("  Diagnóstico de Dados", expanded=False):
             for key in ["base_real_2025", "base_orcado", "base_forecast", "mascara_dre", "plano_contas"]:
                 df = data.get(key)
                 if df is not None and not df.empty:
-                    st.write(f"**{key}**: {len(df)} linhas")
+                    st.write(f"**{key}**: {len(df)} linhas, {len(df.columns)} cols")
+                    st.caption(f"Cols: {list(df.columns)[:8]}")
                 else:
-                    st.write(f"**{key}**: VAZIO")
+                    st.write(f"**{key}**: VAZIO ou None")
+            
+            # Teste hierarquia vs Nivel1
+            try:
+                tmp_hier = dre_logic.calcular_dre_hierarquico(empresa_filtro, mes_atual, 2026)
+                # Encontrar Receita Bruta
+                for r in tmp_hier:
+                    if r.get('nivel_1')=='Receita Bruta' and r.get('level')==1:
+                        st.write(f"**Hier L1 Receita Bruta** R25={r['r_2025']:,.0f} F26={r['f_2026']:,.0f} R26={r['r_2026']:,.0f}")
+                        break
+                for r in tmp_hier:
+                    if r.get('parent')=='Receita Bruta' and r.get('level')==2:
+                        st.write(f"L2 {r['nivel_label'][:20]} R25={r['r_2025']:,.0f} F26={r['f_2026']:,.0f} R26={r['r_2026']:,.0f}")
+                # Verificar soma
+                from collections import defaultdict
+                l2_by_parent=defaultdict(list)
+                for r in tmp_hier:
+                    if r.get('level')==2:
+                        l2_by_parent[r['parent']].append(r)
+                for parent, lst in l2_by_parent.items():
+                    if parent=='Receita Bruta':
+                        s_r25=sum(c['r_2025'] for c in lst)
+                        s_f26=sum(c['f_2026'] for c in lst)
+                        s_r26=sum(c['r_2026'] for c in lst)
+                        st.caption(f"Soma filhos R25 {s_r25:,.0f} F26 {s_f26:,.0f} R26 {s_r26:,.0f}")
+                        break
+            except Exception as e:
+                st.write(f"Erro hier debug: {e}")
+
+            # Teste merge realizado
+            st.markdown("---")
+            st.write("**Teste merge realizado:**")
+            real = data.get("base_real_2025")
+            pc = data.get("plano_contas")
+            if real is not None and not real.empty and pc is not None:
+                st.write(f"real Cod_conta_aux dtype: {real['Cod_conta_aux'].dtype if 'Cod_conta_aux' in real.columns else 'AUSENTE'}")
+                st.write(f"pc Cod Conta dtype: {pc['Cod Conta'].dtype if 'Cod Conta' in pc.columns else 'AUSENTE'}")
+                if "Cod_conta_aux" in real.columns and "Cod Conta" in pc.columns:
+                    test = real.merge(pc[["Cod Conta", "Nivel 1"]], left_on="Cod_conta_aux", right_on="Cod Conta", how="left")
+                    st.write(f"Nivel 1 null: {test['Nivel 1'].isna().sum()}/{len(test)}")
+                    if "Nivel 1" in test.columns:
+                        st.write(f"VALOR sum por Nivel 1:")
+                        grp = test.groupby("Nivel 1")["VALOR_CONTA_V2"].sum()
+                        st.dataframe(grp)
 except Exception as e:
     st.error(f"Erro ao carregar dados: {e}")
     st.stop()
 
 # =============================================================================
-# KPI CARDS — refletem Power BI (XMLA quando disponível)
+# KPI CARDS
 # =============================================================================
 
-# Fonte oficial: tenta XMLA (idêntico ao Power BI Visão José Alberto); fallback DataFrames
+# Tabela principal (valores oficiais - XMLA quando disponível, senão DataFrames)
+# Sempre usar 2025 para R2025, independente do ano_selecionado (evita bug onde R25 vira 2026)
 dre_completo = dre_logic.calcular_dre_luciana(empresa_filtro, meses_ate=mes_atual or 9, ano=ano_selecionado)
+
+# Se XMLA não retornou dados, usar método antigo
 if not dre_completo:
     dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, 2025)
 
-# Receita Bruta para KPIs (Nivel 1)
-rb_r25 = rb_f26 = rb_r26 = rb_o26 = 0
+# Receita Bruta para KPIs
+rb_r25 = 0
+rb_f26 = 0
+rb_r26 = 0
+rb_o26 = 0
 for row in dre_completo:
     if row["nivel_1"] == "Receita Bruta":
-        rb_r25, rb_f26, rb_r26, rb_o26 = row["r_2025"], row["f_2026"], row["r_2026"], row["o_2026"]
+        rb_r25 = row["r_2025"]
+        rb_f26 = row["f_2026"]
+        rb_r26 = row["r_2026"]
+        rb_o26 = row["o_2026"]
         break
-# Para drill-down futuro, manter dre_hier = dre_completo (flat)
-dre_hier = dre_completo
 
 kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 
@@ -308,9 +358,9 @@ st.markdown("""
     periodo=f"Até {MESES_NOMES[mes_atual]}/{ano_selecionado}" if mes_atual else f"Ano {ano_selecionado}"
 ), unsafe_allow_html=True)
 
-# Tabela flat fiel ao Power BI (14 linhas Nivel 1) — sem drill-down
+# Converter para DataFrame para exibição estilizada
 rows = []
-for row in dre_hier:
+for row in dre_completo:
     rows.append({
         "Linha DRE": row["nivel_1"],
         "R 2025 (R$)": row["r_2025"],
@@ -357,17 +407,21 @@ def style_dre_table(df):
     
     return styled
 
-# Exibir tabela flat fiel ao Power BI (sem drill-down)
+# Exibir tabela com coluna Linha DRE congelada
 def render_dre_table_html(df):
-    """Renderiza tabela DRE flat como HTML com coluna A congelada."""
+    """Renderiza tabela DRE como HTML com coluna A congelada."""
+    
     def fmt_rs(v):
         if v == 0: return "R$ -"
         return f"R$ {v:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    
     def fmt_pct(v):
         sinal = "+" if v > 0 else ""
         return f"{sinal}{v:.1%}".replace(",", "X").replace(".", ",").replace("X", ".")
+    
     def fmt_av(v):
         return f"{v:.1%}".replace(",", "X").replace(".", ",").replace("X", ".")
+    
     cols = [
         ("Linha DRE", "text"),
         ("R 2025 (R$)", "rs"), ("AV 25", "av"),
@@ -378,38 +432,51 @@ def render_dre_table_html(df):
         ("O 2026 (R$)", "rs"), ("AV O26", "av"),
         ("Var F26 vs O26 %", "pct"), ("Var F26 vs O26 R$", "rs"),
     ]
+    
     header_html = "".join(
-        f'<th style="white-space:nowrap;{"text-align:left;min-width:280px;position:sticky;left:0;z-index:5;background:var(--bg-deep);box-shadow:2px 0 5px rgba(0,0,0,0.5);" if i==0 else ""}">{c[0]}</th>'
+        f'<th style="white-space:nowrap;{"text-align:left;min-width:220px;position:sticky;left:0;z-index:5;background:var(--bg-deep);box-shadow:2px 0 5px rgba(0,0,0,0.5);" if i==0 else ""}">{c[0]}</th>'
         for i, c in enumerate(cols)
     )
+    
     rows_html = ""
     linhas_destaque = {"Receita Bruta", "Receita Líquida", "Lucro Bruto (R$)", "Ebitda", "Lucro/Prejuízo Do Exercício"}
-    for idx, row in df.iterrows():
+    for _, row in df.iterrows():
         nivel_1 = str(row.get("Linha DRE", "")).strip()
         is_sub = row.get("_subtotal", False) or nivel_1 in linhas_destaque
-        tr_class = ' class="subtotal"' if is_sub else ""
+        cls = ' class="subtotal"' if is_sub else ""
         cells = ""
         for i, (col_name, tipo) in enumerate(cols):
             val = row[col_name]
             if tipo == "text":
                 cell_val = str(val)
-                style = 'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;' + ('background:rgba(180,140,30,0.25) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:var(--gold);font-weight:700;' if is_sub else f'background:{"#080a10" if idx%2==0 else "#0b0e16"} !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);') + 'white-space:nowrap;'
+                if is_sub:
+                    style = 'text-align:left;min-width:220px;position:sticky;left:0;z-index:3;background:rgba(180,140,30,0.25) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:var(--gold);font-weight:700;white-space:nowrap;'
+                else:
+                    bg = "#080a10" if row.name % 2 == 0 else "#0b0e16"
+                    style = f'text-align:left;min-width:220px;position:sticky;left:0;z-index:3;background:{bg} !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);white-space:nowrap;'
             elif tipo == "rs":
                 cell_val = fmt_rs(val)
-                style = "text-align:right;white-space:nowrap;" + ("color:var(--gold);font-weight:700;" if is_sub else "")
+                style = "text-align:right;white-space:nowrap;"
+                if is_sub:
+                    style += "color:var(--gold);font-weight:700;"
             elif tipo == "av":
                 cell_val = fmt_av(val)
                 style = "text-align:right;white-space:nowrap;"
             elif tipo == "pct":
                 cell_val = fmt_pct(val)
-                style = "text-align:right;white-space:nowrap;" + ("color:#4ade80;" if val>0 else "color:#ef4444;" if val<0 else "")
+                style = "text-align:right;white-space:nowrap;"
+                if val > 0:
+                    style += "color:#4ade80;"
+                elif val < 0:
+                    style += "color:#ef4444;"
             else:
                 cell_val = str(val)
                 style = "white-space:nowrap;"
             cells += f'<td style="{style}">{cell_val}</td>'
-        rows_html += f'<tr{tr_class}>{cells}</tr>\n'
+        rows_html += f'<tr{cls}>{cells}</tr>\n'
+    
     html = f"""
-    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border-card);box-shadow:var(--shadow-card);max-height:520px;">
+    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border-card);box-shadow:var(--shadow-card);max-height:500px;">
         <table class="dre-table">
             <thead><tr>{header_html}</tr></thead>
             <tbody>{rows_html}</tbody>
