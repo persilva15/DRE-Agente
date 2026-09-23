@@ -14,34 +14,10 @@ from ui import inject_styles, render_exec_header, render_kpi_card, render_footer
 from auth import login, logout, esta_logado, get_nome
 
 # =============================================================================
-# DETECTAR AMBIENTE (local vs nuvem)
+# MODO LOCAL DIRETO - Power BI / Excel na rede
 # =============================================================================
-
+# R 2025 = Base_Real_2025.xlsx | R 2026 = API TOTVS | XMLA = Power BI Desktop
 IS_CLOUD = False
-GITHUB_CSV_URL = ''
-
-# Método 1: variável de ambiente
-env_url = os.environ.get('GITHUB_CSV_URL', '')
-if env_url:
-    GITHUB_CSV_URL = env_url
-    IS_CLOUD = True
-
-# Método 2: tentar st.secrets
-if not IS_CLOUD:
-    try:
-        GITHUB_CSV_URL = st.secrets["GITHUB_CSV_URL"]
-        IS_CLOUD = True
-    except (KeyError, FileNotFoundError):
-        pass
-
-# Método 3: verificar se rede local existe (timeout rápido)
-if not IS_CLOUD:
-    import socket
-    try:
-        socket.create_connection(("10.5.12.252", 443), timeout=2)
-    except (OSError, socket.timeout):
-        IS_CLOUD = True
-        GITHUB_CSV_URL = "https://raw.githubusercontent.com/persilva15/DRE-Agente/main/csv_data"
 
 # =============================================================================
 # PAGE CONFIG
@@ -176,109 +152,43 @@ with st.sidebar:
 # CARREGAR DADOS
 # =============================================================================
 
-@st.cache_data(ttl=300, show_spinner="Carregando dados...")
-def carregar_dados_base(_cache_version="v3-fix-r25"):
-    """Carrega dados baseado no ambiente (local ou nuvem)."""
-    if IS_CLOUD and GITHUB_CSV_URL:
-        # Modo nuvem: ler CSVs do GitHub
-        from data.loader_csv import DataLoaderCSV
-        loader = DataLoaderCSV(GITHUB_CSV_URL)
-        data = loader.load_all()
-    else:
-        # Modo local: ler Excel da rede
-        from data.loader import DataLoader
-        loader = DataLoader()
-        data = {
-            "base": loader.load_base_dre(),
-            "plano_contas": loader.load_plano_contas(),
-            "mascara_dre": loader.load_mascara_dre(),
-            "auxiliar": loader.load_auxiliar(),
-            "base_real_2025": loader.load_realizado_combinado(),
-            "base_real_2024": loader.load_base_real_2024(),
-            "base_orcado": loader.load_base_orcado(),
-            "base_forecast": loader.load_base_forecast(),
-        }
+@st.cache_data(ttl=3600, show_spinner="Carregando dados...")
+def carregar_dados_base():
+    """Carrega dados direto dos Excels na rede (local)."""
+    from data.loader import DataLoader
+    loader = DataLoader()
+    data = {
+        "base": loader.load_base_dre(),
+        "plano_contas": loader.load_plano_contas(),
+        "mascara_dre": loader.load_mascara_dre(),
+        "auxiliar": loader.load_auxiliar(),
+        "base_real_2025": loader.load_realizado_combinado(),
+        "base_real_2024": loader.load_base_real_2024(),
+        "base_orcado": loader.load_base_orcado(),
+        "base_forecast": loader.load_base_forecast(),
+    }
     return data
 
 def carregar_dados_xmla(empresa: str = None, classificacao: str = None):
-    """Carrega dados XMLA (apenas modo local)."""
-    if IS_CLOUD:
-        return {}
+    """Carrega dados XMLA direto do Power BI Desktop."""
     from data.powerbi_xmla import extrair_dre_jose_alberto
     return extrair_dre_jose_alberto(empresa=empresa, classificacao=classificacao)
 
 try:
     data = carregar_dados_base()
     
-    # XMLA apenas no modo local
-    if not IS_CLOUD:
-        try:
-            with st.spinner("Carregando dados XMLA do Power BI..."):
-                dre_xmla = carregar_dados_xmla(empresa_filtro, classificacao_filtro)
-            data["dre_xmla"] = dre_xmla
-        except Exception as e:
-            st.warning(f"XMLA não disponível: {e}")
-            data["dre_xmla"] = {}
-    else:
+    # XMLA direto do Power BI Desktop (Visão José Alberto)
+    try:
+        with st.spinner("Carregando dados XMLA do Power BI..."):
+            dre_xmla = carregar_dados_xmla(empresa_filtro, classificacao_filtro)
+        data["dre_xmla"] = dre_xmla
+    except Exception as e:
+        st.warning(f"XMLA não disponível (abra o Power BI Desktop com PBI -_OFICIAL_OK_V6.pbip): {e}")
         data["dre_xmla"] = {}
     
     dre_logic = DRELogic(data)
     responder = Responder(dre_logic)
     parser = QuestionParser()
-    
-    # Diagnóstico detalhado (apenas cloud) - v2 com hierarquia
-    if IS_CLOUD:
-        with st.sidebar.expander("  Diagnóstico de Dados", expanded=False):
-            for key in ["base_real_2025", "base_orcado", "base_forecast", "mascara_dre", "plano_contas"]:
-                df = data.get(key)
-                if df is not None and not df.empty:
-                    st.write(f"**{key}**: {len(df)} linhas, {len(df.columns)} cols")
-                    st.caption(f"Cols: {list(df.columns)[:8]}")
-                else:
-                    st.write(f"**{key}**: VAZIO ou None")
-            
-            # Teste hierarquia vs Nivel1
-            try:
-                tmp_hier = dre_logic.calcular_dre_hierarquico(empresa_filtro, mes_atual, 2026)
-                # Encontrar Receita Bruta
-                for r in tmp_hier:
-                    if r.get('nivel_1')=='Receita Bruta' and r.get('level')==1:
-                        st.write(f"**Hier L1 Receita Bruta** R25={r['r_2025']:,.0f} F26={r['f_2026']:,.0f} R26={r['r_2026']:,.0f}")
-                        break
-                for r in tmp_hier:
-                    if r.get('parent')=='Receita Bruta' and r.get('level')==2:
-                        st.write(f"L2 {r['nivel_label'][:20]} R25={r['r_2025']:,.0f} F26={r['f_2026']:,.0f} R26={r['r_2026']:,.0f}")
-                # Verificar soma
-                from collections import defaultdict
-                l2_by_parent=defaultdict(list)
-                for r in tmp_hier:
-                    if r.get('level')==2:
-                        l2_by_parent[r['parent']].append(r)
-                for parent, lst in l2_by_parent.items():
-                    if parent=='Receita Bruta':
-                        s_r25=sum(c['r_2025'] for c in lst)
-                        s_f26=sum(c['f_2026'] for c in lst)
-                        s_r26=sum(c['r_2026'] for c in lst)
-                        st.caption(f"Soma filhos R25 {s_r25:,.0f} F26 {s_f26:,.0f} R26 {s_r26:,.0f}")
-                        break
-            except Exception as e:
-                st.write(f"Erro hier debug: {e}")
-
-            # Teste merge realizado
-            st.markdown("---")
-            st.write("**Teste merge realizado:**")
-            real = data.get("base_real_2025")
-            pc = data.get("plano_contas")
-            if real is not None and not real.empty and pc is not None:
-                st.write(f"real Cod_conta_aux dtype: {real['Cod_conta_aux'].dtype if 'Cod_conta_aux' in real.columns else 'AUSENTE'}")
-                st.write(f"pc Cod Conta dtype: {pc['Cod Conta'].dtype if 'Cod Conta' in pc.columns else 'AUSENTE'}")
-                if "Cod_conta_aux" in real.columns and "Cod Conta" in pc.columns:
-                    test = real.merge(pc[["Cod Conta", "Nivel 1"]], left_on="Cod_conta_aux", right_on="Cod Conta", how="left")
-                    st.write(f"Nivel 1 null: {test['Nivel 1'].isna().sum()}/{len(test)}")
-                    if "Nivel 1" in test.columns:
-                        st.write(f"VALOR sum por Nivel 1:")
-                        grp = test.groupby("Nivel 1")["VALOR_CONTA_V2"].sum()
-                        st.dataframe(grp)
 except Exception as e:
     st.error(f"Erro ao carregar dados: {e}")
     st.stop()
@@ -287,13 +197,12 @@ except Exception as e:
 # KPI CARDS
 # =============================================================================
 
-# Tabela principal (valores oficiais - XMLA quando disponível, senão DataFrames)
-# Sempre usar 2025 para R2025, independente do ano_selecionado (evita bug onde R25 vira 2026)
+# Tentar usar XMLA primeiro (dados idênticos ao Power BI - Visão Total)
 dre_completo = dre_logic.calcular_dre_luciana(empresa_filtro, meses_ate=mes_atual or 9, ano=ano_selecionado)
 
 # Se XMLA não retornou dados, usar método antigo
 if not dre_completo:
-    dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, 2025)
+    dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, ano_selecionado)
 
 # Receita Bruta para KPIs
 rb_r25 = 0
