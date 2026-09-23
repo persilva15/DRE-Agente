@@ -17,7 +17,7 @@ except ImportError:
 
 
 def descobrir_porta_xmla() -> int:
-    """Encontra a porta XMLA do Power BI Desktop."""
+    """Encontra a porta XMLA correta (testa todas e escolhe a que tem as medidas)."""
     ps = (
         "Get-NetTCPConnection -State Listen | Where-Object { $_.LocalAddress -eq '127.0.0.1' "
         "-and (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName -eq 'msmdsrv' } "
@@ -28,6 +28,45 @@ def descobrir_porta_xmla() -> int:
     portas = re.findall(r"\d+", out.stdout)
     if not portas:
         raise RuntimeError("Power BI Desktop nao esta aberto.")
+    # Testar cada porta e escolher a que tem as 4 medidas da Visão José Alberto
+    medidas_necessarias = {"Valor Final Realizado 2025", "Valor Final Realizado 2026", "Valor Final Forecast 2026", "Valor Final Orçado"}
+    for p in portas:
+        try:
+            pythoncom.CoInitialize()
+            conn = win32.Dispatch("ADODB.Connection")
+            conn.Open(f"Provider=MSOLAP;Data Source=localhost:{p}")
+            rs = conn.OpenSchema(1)
+            cat = None
+            while not rs.EOF:
+                try:
+                    cat = rs.Fields("CATALOG_NAME").Value
+                except Exception:
+                    pass
+                rs.MoveNext()
+            rs.Close()
+            conn.Close()
+            conn2 = win32.Dispatch("ADODB.Connection")
+            conn2.Open(f"Provider=MSOLAP;Data Source=localhost:{p};Initial Catalog={cat}")
+            rs2 = conn2.OpenSchema(36)
+            nomes = set()
+            while not rs2.EOF:
+                try:
+                    nomes.add(rs2.Fields("MEASURE_NAME").Value)
+                except Exception:
+                    pass
+                rs2.MoveNext()
+            rs2.Close()
+            conn2.Close()
+            if medidas_necessarias.issubset(nomes):
+                pythoncom.CoUninitialize()
+                return int(p)
+        except Exception:
+            pass
+        try:
+            pythoncom.CoUninitialize()
+        except Exception:
+            pass
+    # fallback: primeira porta
     return int(portas[0])
 
 
