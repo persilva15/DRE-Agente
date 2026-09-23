@@ -76,8 +76,7 @@ inject_styles()
 # =============================================================================
 
 render_exec_header("DRE vs Orçamento 26 · Inteligência Financeira")
-# Indicador de versão para debug da nuvem
-st.caption("Versão: 9ba1575-v4 | Cache v3 | Fix R25 drill-down")
+st.caption("Visão fiel ao Power BI — DRE vs Orçamento 26 (Visão José Alberto) · filtros de página aplicados")
 
 # =============================================================================
 # SIDEBAR
@@ -229,118 +228,35 @@ try:
     responder = Responder(dre_logic)
     parser = QuestionParser()
     
-    # Diagnóstico detalhado (apenas cloud) - v2 com hierarquia
     if IS_CLOUD:
-        with st.sidebar.expander("  Diagnóstico de Dados", expanded=False):
+        with st.sidebar.expander("Diagnóstico de Dados", expanded=False):
             for key in ["base_real_2025", "base_orcado", "base_forecast", "mascara_dre", "plano_contas"]:
                 df = data.get(key)
                 if df is not None and not df.empty:
-                    st.write(f"**{key}**: {len(df)} linhas, {len(df.columns)} cols")
-                    st.caption(f"Cols: {list(df.columns)[:8]}")
+                    st.write(f"**{key}**: {len(df)} linhas")
                 else:
-                    st.write(f"**{key}**: VAZIO ou None")
-            
-            # Teste hierarquia vs Nivel1
-            try:
-                tmp_hier = dre_logic.calcular_dre_hierarquico(empresa_filtro, mes_atual, 2026)
-                # Encontrar Receita Bruta
-                for r in tmp_hier:
-                    if r.get('nivel_1')=='Receita Bruta' and r.get('level')==1:
-                        st.write(f"**Hier L1 Receita Bruta** R25={r['r_2025']:,.0f} F26={r['f_2026']:,.0f} R26={r['r_2026']:,.0f}")
-                        break
-                for r in tmp_hier:
-                    if r.get('parent')=='Receita Bruta' and r.get('level')==2:
-                        st.write(f"L2 {r['nivel_label'][:20]} R25={r['r_2025']:,.0f} F26={r['f_2026']:,.0f} R26={r['r_2026']:,.0f}")
-                # Verificar soma
-                from collections import defaultdict
-                l2_by_parent=defaultdict(list)
-                for r in tmp_hier:
-                    if r.get('level')==2:
-                        l2_by_parent[r['parent']].append(r)
-                for parent, lst in l2_by_parent.items():
-                    if parent=='Receita Bruta':
-                        s_r25=sum(c['r_2025'] for c in lst)
-                        s_f26=sum(c['f_2026'] for c in lst)
-                        s_r26=sum(c['r_2026'] for c in lst)
-                        st.caption(f"Soma filhos R25 {s_r25:,.0f} F26 {s_f26:,.0f} R26 {s_r26:,.0f}")
-                        break
-            except Exception as e:
-                st.write(f"Erro hier debug: {e}")
-
-            # Teste merge realizado
-            st.markdown("---")
-            st.write("**Teste merge realizado:**")
-            real = data.get("base_real_2025")
-            pc = data.get("plano_contas")
-            if real is not None and not real.empty and pc is not None:
-                st.write(f"real Cod_conta_aux dtype: {real['Cod_conta_aux'].dtype if 'Cod_conta_aux' in real.columns else 'AUSENTE'}")
-                st.write(f"pc Cod Conta dtype: {pc['Cod Conta'].dtype if 'Cod Conta' in pc.columns else 'AUSENTE'}")
-                if "Cod_conta_aux" in real.columns and "Cod Conta" in pc.columns:
-                    test = real.merge(pc[["Cod Conta", "Nivel 1"]], left_on="Cod_conta_aux", right_on="Cod Conta", how="left")
-                    st.write(f"Nivel 1 null: {test['Nivel 1'].isna().sum()}/{len(test)}")
-                    if "Nivel 1" in test.columns:
-                        st.write(f"VALOR sum por Nivel 1:")
-                        grp = test.groupby("Nivel 1")["VALOR_CONTA_V2"].sum()
-                        st.dataframe(grp)
+                    st.write(f"**{key}**: VAZIO")
 except Exception as e:
     st.error(f"Erro ao carregar dados: {e}")
     st.stop()
 
 # =============================================================================
-# KPI CARDS + DADOS HIERÁRQUICOS (com drill-down)
+# KPI CARDS — refletem Power BI (XMLA quando disponível)
 # =============================================================================
 
-# Tabela principal (valores oficiais - XMLA quando disponível, senão DataFrames)
-# Sempre usar 2025 para R2025, independente do ano_selecionado (evita bug onde R25 vira 2026)
+# Fonte oficial: tenta XMLA (idêntico ao Power BI Visão José Alberto); fallback DataFrames
 dre_completo = dre_logic.calcular_dre_luciana(empresa_filtro, meses_ate=mes_atual or 9, ano=ano_selecionado)
 if not dre_completo:
     dre_completo = dre_logic.calcular_dre_completo(empresa_filtro, mes_atual, 2025)
 
-# Hierarquia para drill-down (Nivel 2/3) - sempre via DataFrames
-try:
-    dre_hier_full = dre_logic.calcular_dre_hierarquico(empresa_filtro, mes_atual, ano_selecionado)
-except Exception as e:
-    dre_hier_full = []
-
-# Se hierárquico existe, atualizar seus Nivel 1 com valores oficiais (XMLA) para bater com Power BI
-if dre_hier_full:
-    oficial_por_nivel = {r["nivel_1"]: r for r in dre_completo}
-    for rh in dre_hier_full:
-        if rh.get("level", 1) == 1:
-            niv = rh["nivel_1"]
-            if niv in oficial_por_nivel:
-                off = oficial_por_nivel[niv]
-                # Preservar _id, _parent_id, level, parent, has_children, mas atualizar valores
-                for k in ["r_2025","av_2025","f_2026","av_f26","r_2026","av_2026","o_2026","av_o_2026",
-                          "var_f26_r25_pct","var_f26_r25_rs","var_f26_r26_pct","var_f26_r26_rs",
-                          "var_f26_o26_pct","var_f26_o26_rs"]:
-                    rh[k] = off[k]
-    dre_hier = dre_hier_full
-else:
-    # Fallback sem hierarquia (todos level 1)
-    dre_hier = []
-    for r in dre_completo:
-        dre_hier.append({
-            **r,
-            "nivel_2": None, "nivel_3": None,
-            "nivel_label": r["nivel_1"],
-            "level": 1, "parent": None,
-            "_id": f"n1-{len(dre_hier)}", "_parent_id": "",
-            "has_children": False,
-        })
-
-# Receita Bruta para KPIs (sempre do Nivel 1)
-rb_r25 = 0
-rb_f26 = 0
-rb_r26 = 0
-rb_o26 = 0
+# Receita Bruta para KPIs (Nivel 1)
+rb_r25 = rb_f26 = rb_r26 = rb_o26 = 0
 for row in dre_completo:
     if row["nivel_1"] == "Receita Bruta":
-        rb_r25 = row["r_2025"]
-        rb_f26 = row["f_2026"]
-        rb_r26 = row["r_2026"]
-        rb_o26 = row["o_2026"]
+        rb_r25, rb_f26, rb_r26, rb_o26 = row["r_2025"], row["f_2026"], row["r_2026"], row["o_2026"]
         break
+# Para drill-down futuro, manter dre_hier = dre_completo (flat)
+dre_hier = dre_completo
 
 kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 
@@ -392,11 +308,11 @@ st.markdown("""
     periodo=f"Até {MESES_NOMES[mes_atual]}/{ano_selecionado}" if mes_atual else f"Ano {ano_selecionado}"
 ), unsafe_allow_html=True)
 
-# Converter hierarquia para DataFrame (inclui Nivel 2 e 3 para drill-down)
+# Tabela flat fiel ao Power BI (14 linhas Nivel 1) — sem drill-down
 rows = []
 for row in dre_hier:
     rows.append({
-        "Linha DRE": row.get("nivel_label", row.get("nivel_1", "")),
+        "Linha DRE": row["nivel_1"],
         "R 2025 (R$)": row["r_2025"],
         "AV 25": row["av_2025"],
         "F 2026 (R$)": row["f_2026"],
@@ -412,12 +328,6 @@ for row in dre_hier:
         "Var F26 vs O26 %": row["var_f26_o26_pct"],
         "Var F26 vs O26 R$": row["var_f26_o26_rs"],
         "_subtotal": row["subtotal"] == "S",
-        "_level": row.get("level", 1),
-        "_parent": row.get("parent"),
-        "_id": row.get("_id", ""),
-        "_parent_id": row.get("_parent_id", ""),
-        "_has_children": row.get("has_children", False),
-        "_label": row.get("nivel_label", row.get("nivel_1", "")),
     })
 
 df_dre = pd.DataFrame(rows)
@@ -447,21 +357,17 @@ def style_dre_table(df):
     
     return styled
 
-# Exibir tabela com coluna Linha DRE congelada + drill-down hierárquico
+# Exibir tabela flat fiel ao Power BI (sem drill-down)
 def render_dre_table_html(df):
-    """Renderiza tabela DRE como HTML com coluna A congelada e drill-down Nivel 1->2->3."""
-    
+    """Renderiza tabela DRE flat como HTML com coluna A congelada."""
     def fmt_rs(v):
         if v == 0: return "R$ -"
         return f"R$ {v:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    
     def fmt_pct(v):
         sinal = "+" if v > 0 else ""
         return f"{sinal}{v:.1%}".replace(",", "X").replace(".", ",").replace("X", ".")
-    
     def fmt_av(v):
         return f"{v:.1%}".replace(",", "X").replace(".", ",").replace("X", ".")
-    
     cols = [
         ("Linha DRE", "text"),
         ("R 2025 (R$)", "rs"), ("AV 25", "av"),
@@ -472,143 +378,37 @@ def render_dre_table_html(df):
         ("O 2026 (R$)", "rs"), ("AV O26", "av"),
         ("Var F26 vs O26 %", "pct"), ("Var F26 vs O26 R$", "rs"),
     ]
-    
     header_html = "".join(
         f'<th style="white-space:nowrap;{"text-align:left;min-width:280px;position:sticky;left:0;z-index:5;background:var(--bg-deep);box-shadow:2px 0 5px rgba(0,0,0,0.5);" if i==0 else ""}">{c[0]}</th>'
         for i, c in enumerate(cols)
     )
-    
     rows_html = ""
     linhas_destaque = {"Receita Bruta", "Receita Líquida", "Lucro Bruto (R$)", "Ebitda", "Lucro/Prejuízo Do Exercício"}
-    tem_hierarquia = "_level" in df.columns
-
     for idx, row in df.iterrows():
         nivel_1 = str(row.get("Linha DRE", "")).strip()
         is_sub = row.get("_subtotal", False) or nivel_1 in linhas_destaque
-        level = int(row.get("_level", 1)) if tem_hierarquia else 1
-        has_children = bool(row.get("_has_children", False)) if tem_hierarquia else False
-        label = str(row.get("_label", nivel_1))
-        row_id = str(row.get("_id", f"r-{idx}")) if tem_hierarquia else f"r-{idx}"
-        parent_id = str(row.get("_parent_id", "")) if tem_hierarquia else ""
-
-        # Classe e atributos para hierarquia
-        tr_classes = []
-        if is_sub:
-            tr_classes.append("subtotal")
-        if level == 1 and not is_sub and has_children:
-            tr_classes.append("has-children")
-        tr_class_attr = f' class="{" ".join(tr_classes)}"' if tr_classes else ""
-
-        hidden = " hidden-row" if level > 1 else ""
-        if hidden:
-            tr_class_attr = f' class="{(" ".join(tr_classes) + hidden).strip()}"' if tr_classes else ' class="hidden-row"'
-
-        # data attributes para JS - usar IDs para matching robusto (evita encoding de labels)
-        data_attrs = ""
-        if tem_hierarquia:
-            esc_label = label.replace('"', '&quot;').replace("'", "&#39;")
-            data_attrs = f' data-level="{level}" data-id="{row_id}" data-parent-id="{parent_id}" data-label="{esc_label}" data-expanded="false" data-has-children="{str(has_children).lower()}"'
-
+        tr_class = ' class="subtotal"' if is_sub else ""
         cells = ""
         for i, (col_name, tipo) in enumerate(cols):
             val = row[col_name]
             if tipo == "text":
-                # Toggle icon - onclick direto para funcionar dentro do iframe do components.html
-                if level == 1 and has_children:
-                    toggle = '<span class="dre-toggle" onclick="dreToggle(this)">+</span>'
-                elif level == 2 and has_children:
-                    toggle = '<span class="dre-toggle" onclick="dreToggle(this)">+</span>'
-                elif level in (2, 3):
-                    toggle = '<span class="dre-toggle no-child"></span>'
-                else:
-                    toggle = '<span class="dre-toggle no-child" style="border-color:transparent;color:transparent;"></span>' if tem_hierarquia else ""
-
-                # Mostrar toggle apenas para quem tem filhos; caso contrário espaço
-                if level == 1 and not has_children:
-                    toggle = '<span class="dre-toggle no-child" style="border-color:transparent;"></span>' if tem_hierarquia else ""
-
-                cell_val = f'{toggle}{str(val)}'
-                if is_sub:
-                    style = 'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;background:rgba(180,140,30,0.25) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:var(--gold);font-weight:700;white-space:nowrap;'
-                else:
-                    bg = "#080a10" if idx % 2 == 0 else "#0b0e16"
-                    if level == 2:
-                        style = f'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;background:rgba(255,255,255,0.02) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:#bbb;white-space:nowrap;padding-left:30px !important;'
-                    elif level == 3:
-                        style = f'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;background:rgba(255,255,255,0.01) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:#999;white-space:nowrap;padding-left:52px !important;font-size:0.74rem;'
-                    else:
-                        style = f'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;background:{bg} !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);white-space:nowrap;'
+                cell_val = str(val)
+                style = 'text-align:left;min-width:280px;position:sticky;left:0;z-index:3;' + ('background:rgba(180,140,30,0.25) !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);color:var(--gold);font-weight:700;' if is_sub else f'background:{"#080a10" if idx%2==0 else "#0b0e16"} !important;box-shadow:4px 0 10px rgba(0,0,0,0.9);') + 'white-space:nowrap;'
             elif tipo == "rs":
                 cell_val = fmt_rs(val)
-                style = "text-align:right;white-space:nowrap;"
-                if is_sub:
-                    style += "color:var(--gold);font-weight:700;"
-                elif level == 2:
-                    style += "color:#bbb;"
-                elif level == 3:
-                    style += "color:#999;font-size:0.78rem;"
+                style = "text-align:right;white-space:nowrap;" + ("color:var(--gold);font-weight:700;" if is_sub else "")
             elif tipo == "av":
                 cell_val = fmt_av(val)
                 style = "text-align:right;white-space:nowrap;"
-                if level == 2: style += "color:#bbb;"
-                elif level == 3: style += "color:#999;font-size:0.78rem;"
             elif tipo == "pct":
                 cell_val = fmt_pct(val)
-                style = "text-align:right;white-space:nowrap;"
-                if val > 0:
-                    style += "color:#4ade80;"
-                elif val < 0:
-                    style += "color:#ef4444;"
-                if level == 3: style += "font-size:0.78rem;"
+                style = "text-align:right;white-space:nowrap;" + ("color:#4ade80;" if val>0 else "color:#ef4444;" if val<0 else "")
             else:
                 cell_val = str(val)
                 style = "white-space:nowrap;"
             cells += f'<td style="{style}">{cell_val}</td>'
-        rows_html += f'<tr{tr_class_attr}{data_attrs}>{cells}</tr>\n'
-    
-    drill_js = ""
-    if tem_hierarquia and df["_has_children"].any():
-        drill_js = """
-        <script>
-        function dreToggle(toggle) {
-            if (toggle.classList.contains('no-child')) return;
-            var row = toggle.closest('tr');
-            if (!row || !row.dataset.level) return;
-            var level = parseInt(row.dataset.level);
-            var expanded = row.dataset.expanded === 'true';
-            if (expanded) {
-                row.dataset.expanded = 'false';
-                toggle.textContent = '+';
-                // Colapsar: esconder todos os descendentes usando ordem do DOM
-                var next = row.nextElementSibling;
-                while (next) {
-                    var nl = parseInt(next.dataset.level || '0');
-                    if (nl <= level) break;
-                    next.classList.add('hidden-row');
-                    next.dataset.expanded = 'false';
-                    var t = next.querySelector('.dre-toggle');
-                    if (t && !t.classList.contains('no-child')) t.textContent = '+';
-                    next = next.nextElementSibling;
-                }
-            } else {
-                row.dataset.expanded = 'true';
-                toggle.textContent = '\\u2212';
-                // Expandir: mostrar apenas filhos diretos (proximo nivel)
-                var next = row.nextElementSibling;
-                while (next) {
-                    var nl = parseInt(next.dataset.level || '0');
-                    if (nl <= level) break;
-                    if (nl === level + 1) {
-                        next.classList.remove('hidden-row');
-                    }
-                    next = next.nextElementSibling;
-                }
-            }
-        }
-        </script>
-        """
-
-    table_html = f"""
+        rows_html += f'<tr{tr_class}>{cells}</tr>\n'
+    html = f"""
     <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border-card);box-shadow:var(--shadow-card);max-height:520px;">
         <table class="dre-table">
             <thead><tr>{header_html}</tr></thead>
@@ -616,18 +416,9 @@ def render_dre_table_html(df):
         </table>
     </div>
     """
-    # JS separado para não ser escapado pelo markdown
-    full_html = table_html + drill_js
-    return full_html
+    return html
 
-# Renderizar via components.html para JS funcionar (st.markdown stripa <script>)
-DreHtml = render_dre_table_html(df_dre)
-# Tentar components.html; fallback para markdown se falhar
-try:
-    from ui import EXECUTIVE_CSS
-    components.html(f"<html><head>{EXECUTIVE_CSS}</head><body style='margin:0;background:transparent;'>{DreHtml}</body></html>", height=620, scrolling=True)
-except Exception:
-    st.markdown(DreHtml, unsafe_allow_html=True)
+st.markdown(render_dre_table_html(df_dre), unsafe_allow_html=True)
 
 # =============================================================================
 # PERGUNTA DO USUÁRIO
